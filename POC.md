@@ -1,7 +1,3 @@
-# POC - Ativos de Meteorologia (Repositorio Independente)
-
-## 1) Objetivo
-
 Documentar uma POC em **repo independente** para validar:
 
 - Mapbox para visualizacao interativa dos ativos;
@@ -97,9 +93,6 @@ CREATE TABLE IF NOT EXISTS meteorology_asset
     coverage_geometry       geometry(Geometry, 4326) NULL,
     coverage_source         VARCHAR(20) NOT NULL DEFAULT 'DRAW', -- DRAW | KML
 
-    -- opcional para validacao de modelo 3D
-    model_3d_url            TEXT NULL,
-
     inserted_at             TIMESTAMP(6) NOT NULL DEFAULT NOW(),
     updated_at              TIMESTAMP(6) NOT NULL DEFAULT NOW(),
 
@@ -175,9 +168,6 @@ public class MeteorologyAssetEntity extends AuditableJpaEntity<UUID> {
 
     @Column(name = "coverage_source", nullable = false)
     private String coverageSource;
-
-    @Column(name = "model_3d_url")
-    private String model3dUrl;
 
     @MapsId
     @OneToOne(fetch = FetchType.LAZY, optional = false)
