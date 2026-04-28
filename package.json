@@ -1,0 +1,31 @@
+{
+  "name": "mapbox-vision",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20.11.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:api": "pnpm --filter @mapbox-vision/api start:dev",
+    "dev:web": "pnpm --filter @mapbox-vision/web dev",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres",
+    "prisma:generate": "pnpm --filter @mapbox-vision/api prisma:generate",
+    "prisma:migrate:dev": "pnpm --filter @mapbox-vision/api prisma:migrate:dev",
+    "prisma:studio": "pnpm --filter @mapbox-vision/api prisma:studio",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.13",
+    "typescript": "^5.7.2"
+  }
+}
