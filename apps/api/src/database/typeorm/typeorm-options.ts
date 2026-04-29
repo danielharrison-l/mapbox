@@ -18,7 +18,7 @@ export function createPostgresTypeOrmOptions(
     type: 'postgres',
     url: parsedUrl.toString(),
     schema,
-    synchronize: false,
+    synchronize: true,
     logging: options.nodeEnv === 'development' ? ['error', 'warn'] : ['error'],
   };
 }
