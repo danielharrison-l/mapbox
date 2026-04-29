@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { PrismaModule } from './database/prisma/prisma.module';
+import { TypeOrmDatabaseModule } from './database/typeorm/typeorm.module';
 import { DeliverablesModule } from './modules/deliverables/deliverables.module';
 import { GeoModule } from './modules/geo/geo.module';
 import { HealthModule } from './modules/health/health.module';
@@ -9,8 +9,9 @@ import { HealthModule } from './modules/health/health.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: ['.env', 'apps/api/.env', '../../.env'],
     }),
-    PrismaModule,
+    TypeOrmDatabaseModule,
     HealthModule,
     DeliverablesModule,
     GeoModule,

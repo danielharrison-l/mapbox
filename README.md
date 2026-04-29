@@ -1,12 +1,12 @@
 # Mapbox Vision
 
-POC geoespacial em monorepo com React, Vite, NestJS, Prisma, PostgreSQL e PostGIS.
+POC geoespacial em monorepo com React, Vite, NestJS, TypeORM, PostgreSQL e PostGIS.
 
 ## Stack
 
 - Frontend: React + Vite + TypeScript
 - Backend: Node.js + NestJS + TypeScript
-- ORM: Prisma
+- ORM: TypeORM
 - Banco: PostgreSQL + PostGIS
 - Workspace: pnpm
 - Ambiente local: Docker Compose
@@ -31,7 +31,6 @@ cp .env.example .env
 cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.example apps/web/.env
 pnpm db:up
-pnpm prisma:generate
 pnpm dev:api
 pnpm dev:web
 ```
@@ -45,9 +44,10 @@ pnpm dev:web             # frontend
 pnpm dev:api             # backend
 pnpm db:up               # PostgreSQL/PostGIS
 pnpm db:down             # derruba containers
-pnpm prisma:generate     # gera Prisma Client
-pnpm prisma:migrate:dev  # cria/aplica migrations futuras
-pnpm prisma:studio       # abre Prisma Studio
+pnpm db:migration:generate # gera uma migration TypeORM
+pnpm db:migration:show     # lista migrations TypeORM
+pnpm db:migration:run      # aplica migrations TypeORM
+pnpm db:migration:revert   # reverte a ultima migration TypeORM
 pnpm lint                # lint com Biome
 pnpm format              # formatacao com Biome
 pnpm check               # lint + format check com Biome
