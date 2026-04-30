@@ -11,9 +11,35 @@ export class TypeOrmMeteorologyAssetRepository implements MeteorologyAssetReposi
     private readonly repository: Repository<MeteorologyAsset>,
   ) {}
 
-  public async save(
-    entity: MeteorologyAsset,
-  ): Promise<MeteorologyAsset> {
+  public async save(entity: MeteorologyAsset): Promise<MeteorologyAsset> {
     return this.repository.save(entity);
+  }
+
+  public async findAll(): Promise<MeteorologyAsset[]> {
+    return this.repository.find({
+      relations: {
+        infrastructurePoint: {
+          municipality: true,
+        },
+      },
+      order: {
+        infrastructurePointId: 'ASC',
+      },
+    });
+  }
+
+  public async findByInfrastructurePointId(
+    infrastructurePointId: number,
+  ): Promise<MeteorologyAsset | null> {
+    return this.repository.findOne({
+      where: {
+        infrastructurePointId,
+      },
+      relations: {
+        infrastructurePoint: {
+          municipality: true,
+        },
+      },
+    });
   }
 }

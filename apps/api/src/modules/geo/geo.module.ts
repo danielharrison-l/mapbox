@@ -2,6 +2,8 @@ import {Module} from '@nestjs/common';
 import {TypeOrmModule} from '@nestjs/typeorm';
 import {CreateInfrastructurePointUseCase} from './application/usecases/create-infrastructure-point.use-case';
 import {CreateMeteorologyAssetUseCase} from './application/usecases/create-meteorology-asset.use-case';
+import {FindAllMeteorologyAssetsUseCase} from './application/usecases/find-all-meteorology-assets.use-case';
+import {FindMeteorologyAssetByInfrastructurePointIdUseCase} from './application/usecases/find-meteorology-asset-by-infrastructure-point-id.use-case';
 import {FindAllMunicipalitiesUseCase} from './application/usecases/find-all-municipalities.use-case';
 import {InfrastructurePointController} from './http/controllers/infrastructure-point.controller';
 import {MeteorologyAssetController} from './http/controllers/meteorology-asset.controller';
@@ -15,6 +17,8 @@ import {GEO_REPOSITORY_PROVIDERS, GEO_REPOSITORY_TOKENS,} from './infrastructure
     providers: [
         CreateInfrastructurePointUseCase,
         CreateMeteorologyAssetUseCase,
+        FindAllMeteorologyAssetsUseCase,
+        FindMeteorologyAssetByInfrastructurePointIdUseCase,
         FindAllMunicipalitiesUseCase,
         ...GEO_REPOSITORY_PROVIDERS
     ],

@@ -14,12 +14,11 @@
         <property name="com.intellij.clouds.kubernetes.db.enabled" value="false" />
         <property name="com.intellij.clouds.kubernetes.db.container.port" />
       </jdbc-additional-properties>
-      <secret-storage>master_key</secret-storage>
       <user-name>mapbox_vision</user-name>
       <schema-mapping>
         <introspection-scope>
-          <node kind="database" qname="@">
-            <node kind="schema" qname="@" />
+          <node kind="database" qname="mapbox_vision">
+            <node kind="schema" negative="1" />
           </node>
         </introspection-scope>
       </schema-mapping>

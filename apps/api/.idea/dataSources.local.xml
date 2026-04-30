@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="dataSourceStorageLocal" created-in="WS-261.23567.141">
+    <data-source name="mapbox_vision@localhost" uuid="2fb47f11-4447-4516-bc70-ff7d940f3e75">
+      <database-info product="PostgreSQL" version="16.4 (Debian 16.4-1.pgdg110+2)" jdbc-version="4.2" driver-name="PostgreSQL JDBC Driver" driver-version="42.7.3" dbms="POSTGRES" exact-version="16.4" exact-driver-version="42.7">
+        <identifier-quote-string>&quot;</identifier-quote-string>
+      </database-info>
+      <case-sensitivity plain-identifiers="lower" quoted-identifiers="exact" />
+      <user-name>mapbox_vision</user-name>
+      <schema-mapping>
+        <introspection-scope>
+          <node kind="database" qname="mapbox_vision">
+            <node kind="schema" negative="1" />
+          </node>
+        </introspection-scope>
+      </schema-mapping>
+    </data-source>
+  </component>
+</project>
