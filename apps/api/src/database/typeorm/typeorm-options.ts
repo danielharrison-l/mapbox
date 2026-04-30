@@ -2,7 +2,6 @@ import type { DataSourceOptions } from 'typeorm';
 
 type TypeOrmEnvironmentOptions = {
   nodeEnv?: string;
-  schema?: string;
 };
 
 export function createPostgresTypeOrmOptions(
@@ -10,7 +9,7 @@ export function createPostgresTypeOrmOptions(
   options: TypeOrmEnvironmentOptions = {},
 ): DataSourceOptions {
   const parsedUrl = new URL(databaseUrl);
-  const schema = options.schema ?? parsedUrl.searchParams.get('schema') ?? 'public';
+  const schema = parsedUrl.searchParams.get('schema') ?? 'public';
 
   parsedUrl.searchParams.delete('schema');
 

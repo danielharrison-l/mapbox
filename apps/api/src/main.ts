@@ -1,20 +1,22 @@
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { apiEnv } from './config/env';
 import { setupSwagger } from './config/swagger.config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  const port = Number(process.env.API_PORT ?? 3000);
+  const logger = new Logger('Bootstrap');
 
   app.enableCors({
-    origin: process.env.WEB_ORIGIN ?? 'http://localhost:5173',
+    origin: apiEnv.webOrigins,
   });
 
-  if (process.env.SWAGGER_ENABLED !== 'false') {
-    setupSwagger(app);
-  }
+  setupSwagger(app);
 
-  await app.listen(port);
+  await app.listen(apiEnv.apiPort);
+  logger.log(`API listening on port ${apiEnv.apiPort}`);
+  logger.log(`CORS enabled for: ${apiEnv.webOrigins.join(', ')}`);
 }
 
 void bootstrap();
