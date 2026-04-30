@@ -89,6 +89,7 @@ export class MeteorologyAssetMapper {
       municipalityId: entity.infrastructurePoint.municipalityId,
       municipalityName: entity.infrastructurePoint.municipality?.name ?? null,
       status: entity.status,
+      coverageArea: MeteorologyAssetMapper.toGeoJsonGeometry(entity.coverageArea),
     };
   }
 

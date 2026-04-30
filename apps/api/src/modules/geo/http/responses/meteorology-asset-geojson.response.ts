@@ -44,6 +44,23 @@ export class MeteorologyAssetGeoJsonPropertiesResponse {
     example: MeteorologyAssetStatus.NOT_STARTED,
   })
   public status!: MeteorologyAssetStatus;
+
+  @ApiProperty({
+    example: {
+      type: 'Polygon',
+      coordinates: [
+        [
+          [-35.74, -9.67],
+          [-35.73, -9.67],
+          [-35.73, -9.66],
+          [-35.74, -9.66],
+          [-35.74, -9.67],
+        ],
+      ],
+    },
+    nullable: true,
+  })
+  public coverageArea!: GeoJsonGeometry | null;
 }
 
 export class MeteorologyAssetGeoJsonFeatureResponse {
