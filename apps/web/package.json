@@ -6,21 +6,23 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
-    "preview": "vite preview",
-    "lint": "biome lint src",
-    "typecheck": "tsc --noEmit"
+    "lint": "biome lint src vite.config.ts",
+    "format": "biome format --write src vite.config.ts",
+    "check": "biome check src vite.config.ts",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "@mapbox-vision/shared": "workspace:*",
-    "@vitejs/plugin-react": "^4.3.4",
-    "mapbox-gl": "^3.9.4",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "mapbox-gl": "^3.22.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
   },
   "devDependencies": {
-    "@types/react": "^19.0.2",
-    "@types/react-dom": "^19.0.2",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
     "typescript": "^5.7.2",
-    "vite": "^6.0.6"
+    "vite": "^8.0.10"
   }
 }
