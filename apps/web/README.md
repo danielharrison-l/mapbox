@@ -1,28 +1,23 @@
-# use-mapbox-gl-js-with-react
+# Mapbox Vision Web
 
-This is supporting code for the Mapbox tutorial [Use Mapbox GL JS in an React app](https://docs.mapbox.com/help/tutorials/use-mapbox-gl-js-with-react/).
+Frontend React/Vite da POC geoespacial.
 
-## Overview
+## Ambiente
 
-This tutorial walks through how to setup [Mapbox GL JS](https://docs.mapbox.com/mapbox-gl-js/) in an [React](https://react.dev) project.  
+Crie `apps/web/.env` a partir de `apps/web/.env.example` e informe:
 
+```env
+VITE_MAPBOX_ACCESS_TOKEN=your_mapbox_access_token_here
+VITE_API_BASE_URL=http://localhost:3000
+```
 
-You'll learn how to:
-- Setup a Vite JS app to use React
-- How to install Mapbox GL JS and its dependencies.
-- Use Mapbox GL JS to render a full screen map.
-- How to add a toolbar which displays map state like `longitude`, `latitude`, and `zoom` level and is updated as the map is interacted with (showing the map to app data flow).
-- How to create a UI button to reset the map to its original view (showing the app to map data flow).
+## Desenvolvimento
 
+Na raiz do monorepo:
 
-## Prerequisites
+```bash
+pnpm dev:web
+```
 
-- Node v18.20 or higher
-- npm
-
-## How to run
-
-- Clone this repository and navigate to this directory
-- Install dependencies with `npm install`
-- Replace `YOUR_MAPBOX_ACCESS_TOKEN` in `src/App.jsx` with an access token from your [Mapbox account](https://console.mapbox.com/).
-- Run the development server with `npm run dev` and open the app in your browser at [http://localhost:5173](http://localhost:5173).
+Quando alterar `vite.config.ts` ou dependencias do Vite/Tailwind, reinicie o
+dev server.
