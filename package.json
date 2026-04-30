@@ -14,6 +14,7 @@
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "db:logs": "docker compose logs -f postgres",
+    "db:seed:geo": "pnpm --filter @mapbox-vision/api seed:geo",
     "typeorm": "pnpm --filter @mapbox-vision/api typeorm",
     "db:migration:generate": "pnpm --filter @mapbox-vision/api migration:generate",
     "db:migration:show": "pnpm --filter @mapbox-vision/api migration:show",
