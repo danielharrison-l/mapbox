@@ -66,9 +66,9 @@ export function AssetDetailsPanel({ asset, onClose, onFocusCoverage }: AssetDeta
               </strong>
             </div>
             <div className={summaryItemClassName}>
-              <span className={labelTextClassName}>Status</span>
+              <span className={labelTextClassName}>Estado</span>
               <strong className={summaryValueClassName}>
-                {getStatusLabel(asset.properties.status)}
+                {asset.properties.municipalityState ?? '-'}
               </strong>
             </div>
           </div>

@@ -326,6 +326,9 @@ export function readAssetFeature(
       municipalityName: feature.properties?.municipalityName
         ? String(feature.properties.municipalityName)
         : null,
+      municipalityState: feature.properties?.municipalityState
+        ? String(feature.properties.municipalityState)
+        : null,
       status: String(feature.properties?.status ?? 'NOT_STARTED') as
         | 'NOT_STARTED'
         | 'STARTED'

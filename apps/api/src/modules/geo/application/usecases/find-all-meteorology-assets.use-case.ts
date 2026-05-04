@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { MeteorologyAsset } from '../../infrastructure/persistence/entities/meteorology-asset.entity';
 import type { MeteorologyAssetRepository } from '../../infrastructure/persistence/repositories/meteorology-asset.repository';
 import { METEOROLOGY_ASSET_REPOSITORY } from '../../infrastructure/persistence/repositories/providers/repositories.providers';
+import type { FindMeteorologyAssetsInput } from '../dto/find-meteorology-assets.input';
 
 @Injectable()
 export class FindAllMeteorologyAssetsUseCase {
@@ -10,7 +11,7 @@ export class FindAllMeteorologyAssetsUseCase {
     private readonly meteorologyAssetRepository: MeteorologyAssetRepository,
   ) {}
 
-  public async execute(): Promise<MeteorologyAsset[]> {
-    return this.meteorologyAssetRepository.findAll();
+  public async execute(filters: FindMeteorologyAssetsInput = {}): Promise<MeteorologyAsset[]> {
+    return this.meteorologyAssetRepository.findAll(filters);
   }
 }

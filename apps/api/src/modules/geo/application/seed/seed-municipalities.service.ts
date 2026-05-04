@@ -1,6 +1,7 @@
 import { Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
+import { assertBrazilianState, type BrazilianState } from '../../domain/brazilian-state';
 import { InfrastructurePoint } from '../../infrastructure/persistence/entities/infrastructure-point.entity';
 import {
   MeteorologyAsset,
@@ -20,6 +21,7 @@ type PolygonGeometry = {
 
 type MunicipalitySeed = {
   name: string;
+  state: BrazilianState;
   population: number;
   coordinates: [number, number];
 };
@@ -27,33 +29,33 @@ type MunicipalitySeed = {
 const TARGET_METEOROLOGY_ASSETS_COUNT = 90;
 
 const MUNICIPALITY_SEED_DATA: MunicipalitySeed[] = [
-  { name: 'Rio Branco', population: 364756, coordinates: [-67.8243, -9.974] },
-  { name: 'Maceio', population: 957916, coordinates: [-35.735, -9.6658] },
-  { name: 'Macapa', population: 442933, coordinates: [-51.05, 0.0349] },
-  { name: 'Manaus', population: 2063689, coordinates: [-60.0217, -3.119] },
-  { name: 'Salvador', population: 2417678, coordinates: [-38.5014, -12.9777] },
-  { name: 'Fortaleza', population: 2428678, coordinates: [-38.5267, -3.7319] },
-  { name: 'Brasilia', population: 2817381, coordinates: [-47.8825, -15.7942] },
-  { name: 'Vitoria', population: 322869, coordinates: [-40.3377, -20.3155] },
-  { name: 'Goiania', population: 1437366, coordinates: [-49.2643, -16.6869] },
-  { name: 'Sao Luis', population: 1037775, coordinates: [-44.3028, -2.5307] },
-  { name: 'Cuiaba', population: 650912, coordinates: [-56.0967, -15.601] },
-  { name: 'Campo Grande', population: 898100, coordinates: [-54.6464, -20.4697] },
-  { name: 'Belo Horizonte', population: 2315560, coordinates: [-43.9345, -19.9167] },
-  { name: 'Belem', population: 1303389, coordinates: [-48.5044, -1.4558] },
-  { name: 'Joao Pessoa', population: 833932, coordinates: [-34.845, -7.1195] },
-  { name: 'Curitiba', population: 1773718, coordinates: [-49.2733, -25.4284] },
-  { name: 'Recife', population: 1488920, coordinates: [-34.877, -8.0476] },
-  { name: 'Teresina', population: 866300, coordinates: [-42.8016, -5.0892] },
-  { name: 'Rio de Janeiro', population: 6211423, coordinates: [-43.1729, -22.9068] },
-  { name: 'Natal', population: 751300, coordinates: [-35.2094, -5.7945] },
-  { name: 'Porto Alegre', population: 1332845, coordinates: [-51.2177, -30.0346] },
-  { name: 'Porto Velho', population: 460434, coordinates: [-63.9039, -8.7608] },
-  { name: 'Boa Vista', population: 413486, coordinates: [-60.6758, 2.8235] },
-  { name: 'Florianopolis', population: 537211, coordinates: [-48.5482, -27.5949] },
-  { name: 'Sao Paulo', population: 11451999, coordinates: [-46.6333, -23.5505] },
-  { name: 'Aracaju', population: 602757, coordinates: [-37.0717, -10.9472] },
-  { name: 'Palmas', population: 302692, coordinates: [-48.3336, -10.184] },
+  { name: 'Rio Branco', state: 'AC', population: 364756, coordinates: [-67.8243, -9.974] },
+  { name: 'Maceio', state: 'AL', population: 957916, coordinates: [-35.735, -9.6658] },
+  { name: 'Macapa', state: 'AP', population: 442933, coordinates: [-51.05, 0.0349] },
+  { name: 'Manaus', state: 'AM', population: 2063689, coordinates: [-60.0217, -3.119] },
+  { name: 'Salvador', state: 'BA', population: 2417678, coordinates: [-38.5014, -12.9777] },
+  { name: 'Fortaleza', state: 'CE', population: 2428678, coordinates: [-38.5267, -3.7319] },
+  { name: 'Brasilia', state: 'DF', population: 2817381, coordinates: [-47.8825, -15.7942] },
+  { name: 'Vitoria', state: 'ES', population: 322869, coordinates: [-40.3377, -20.3155] },
+  { name: 'Goiania', state: 'GO', population: 1437366, coordinates: [-49.2643, -16.6869] },
+  { name: 'Sao Luis', state: 'MA', population: 1037775, coordinates: [-44.3028, -2.5307] },
+  { name: 'Cuiaba', state: 'MT', population: 650912, coordinates: [-56.0967, -15.601] },
+  { name: 'Campo Grande', state: 'MS', population: 898100, coordinates: [-54.6464, -20.4697] },
+  { name: 'Belo Horizonte', state: 'MG', population: 2315560, coordinates: [-43.9345, -19.9167] },
+  { name: 'Belem', state: 'PA', population: 1303389, coordinates: [-48.5044, -1.4558] },
+  { name: 'Joao Pessoa', state: 'PB', population: 833932, coordinates: [-34.845, -7.1195] },
+  { name: 'Curitiba', state: 'PR', population: 1773718, coordinates: [-49.2733, -25.4284] },
+  { name: 'Recife', state: 'PE', population: 1488920, coordinates: [-34.877, -8.0476] },
+  { name: 'Teresina', state: 'PI', population: 866300, coordinates: [-42.8016, -5.0892] },
+  { name: 'Rio de Janeiro', state: 'RJ', population: 6211423, coordinates: [-43.1729, -22.9068] },
+  { name: 'Natal', state: 'RN', population: 751300, coordinates: [-35.2094, -5.7945] },
+  { name: 'Porto Alegre', state: 'RS', population: 1332845, coordinates: [-51.2177, -30.0346] },
+  { name: 'Porto Velho', state: 'RO', population: 460434, coordinates: [-63.9039, -8.7608] },
+  { name: 'Boa Vista', state: 'RR', population: 413486, coordinates: [-60.6758, 2.8235] },
+  { name: 'Florianopolis', state: 'SC', population: 537211, coordinates: [-48.5482, -27.5949] },
+  { name: 'Sao Paulo', state: 'SP', population: 11451999, coordinates: [-46.6333, -23.5505] },
+  { name: 'Aracaju', state: 'SE', population: 602757, coordinates: [-37.0717, -10.9472] },
+  { name: 'Palmas', state: 'TO', population: 302692, coordinates: [-48.3336, -10.184] },
 ];
 
 @Injectable()
@@ -74,6 +76,10 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
   }
 
   public async resetGeoMock(): Promise<void> {
+    for (const municipalitySeed of MUNICIPALITY_SEED_DATA) {
+      assertBrazilianState(municipalitySeed.state);
+    }
+
     await this.meteorologyAssetRepository.createQueryBuilder().delete().execute();
     await this.infrastructurePointRepository.createQueryBuilder().delete().execute();
     await this.municipalityRepository.createQueryBuilder().delete().execute();

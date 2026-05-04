@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import type { BrazilianState } from '../../domain/brazilian-state';
 import { MeteorologyAssetStatus } from '../../infrastructure/persistence/entities/meteorology-asset.entity';
 
 export type GeoJsonGeometry = {
@@ -38,6 +39,12 @@ export class MeteorologyAssetGeoJsonPropertiesResponse {
     nullable: true,
   })
   public municipalityName!: string | null;
+
+  @ApiProperty({
+    example: 'AL',
+    nullable: true,
+  })
+  public municipalityState!: BrazilianState | null;
 
   @ApiProperty({
     enum: MeteorologyAssetStatus,

@@ -1,12 +1,13 @@
 import mapboxgl from 'mapbox-gl';
-import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AssetCreatePanel } from './components/AssetCreatePanel';
 import { AssetDetailsPanel } from './components/AssetDetailsPanel';
+import { AssetFiltersPanel } from './components/AssetFiltersPanel';
 import { MapActions } from './components/MapActions';
 import { MapCanvas } from './components/MapCanvas';
 import { TokenWarning } from './components/TokenWarning';
 import { createMeteorologyAsset, fetchMeteorologyAssets, fetchMunicipalities } from './lib/api';
-import { createCoverageArea, getErrorMessage } from './lib/geo';
+import { assetMatchesFilters, createCoverageArea, getErrorMessage } from './lib/geo';
 import {
   BRAZIL_BOUNDS,
   getPolygonBounds,
@@ -18,9 +19,11 @@ import {
   upsertSelectedPointLayer,
 } from './lib/mapbox';
 import type {
+  AssetFilters,
   AssetFormState,
   CreateMeteorologyAssetRequest,
   MeteorologyAssetPointFeature,
+  MeteorologyAssetsPointCollection,
   Municipality,
 } from './types/geo';
 
@@ -33,6 +36,16 @@ const initialFormState: AssetFormState = {
   status: 'NOT_STARTED',
 };
 
+const initialAssetFilters: AssetFilters = {
+  state: 'ALL',
+  status: 'ALL',
+};
+
+const emptyAssetsGeoJson: MeteorologyAssetsPointCollection = {
+  type: 'FeatureCollection',
+  features: [],
+};
+
 function App() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -42,24 +55,43 @@ function App() {
   const [form, setForm] = useState<AssetFormState>(initialFormState);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
+  const [assetsGeoJson, setAssetsGeoJson] =
+    useState<MeteorologyAssetsPointCollection>(emptyAssetsGeoJson);
+  const [totalAssetsCount, setTotalAssetsCount] = useState(0);
+  const [filters, setFilters] = useState<AssetFilters>(initialAssetFilters);
   const [selectedPoint, setSelectedPoint] = useState<[number, number] | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<MeteorologyAssetPointFeature | null>(null);
   const [isFormExpanded, setIsFormExpanded] = useState(false);
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
+  const [isMapLoaded, setIsMapLoaded] = useState(false);
   const accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
   const tokenMissing = !accessToken || accessToken === 'your_mapbox_access_token_here';
 
-  const reloadAssets = useCallback(async (signal: AbortSignal) => {
-    if (!mapRef.current) {
-      return;
-    }
-
-    const geoJson = await fetchMeteorologyAssets(signal);
+  const reloadAssets = useCallback(async (signal: AbortSignal, nextFilters: AssetFilters) => {
+    const geoJson = await fetchMeteorologyAssets(signal, nextFilters);
     assetsByInfrastructurePointIdRef.current = new Map(
       geoJson.features.map((feature) => [feature.properties.infrastructurePointId, feature]),
     );
-    upsertAssetLayer(mapRef.current, geoJson);
+    setAssetsGeoJson(geoJson);
+    return geoJson;
   }, []);
+
+  const hasActiveFilters = useMemo(
+    () => filters.state !== 'ALL' || filters.status !== 'ALL',
+    [filters],
+  );
+
+  const clearSelectedAsset = useCallback(() => {
+    setSelectedAsset(null);
+    setIsDetailsExpanded(false);
+
+    if (!mapRef.current || !isMapLoaded) {
+      return;
+    }
+
+    upsertSelectedCoverageLayer(mapRef.current, null);
+    upsertSelectedAssetLayer(mapRef.current, null);
+  }, [isMapLoaded]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -105,21 +137,11 @@ function App() {
     map.fitBounds(BRAZIL_BOUNDS, { padding: 24, duration: 0 });
     mapRef.current = map;
 
-    const abortController = new AbortController();
-
     map.on('load', () => {
       upsertSelectedPointLayer(map, null);
       upsertSelectedCoverageLayer(map, null);
       upsertSelectedAssetLayer(map, null);
-      void reloadAssets(abortController.signal).catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === 'AbortError') {
-          return;
-        }
-
-        const errorMessage = getErrorMessage(error);
-        console.error('Failed to load meteorology assets from API', error);
-        setFormStatus(`Falha ao carregar entregaveis da API: ${errorMessage}`);
-      });
+      setIsMapLoaded(true);
     });
 
     map.on('click', METEOROLOGY_ASSETS_LAYER_ID, (event) => {
@@ -203,11 +225,72 @@ function App() {
     });
 
     return () => {
-      abortController.abort();
       map.remove();
       mapRef.current = null;
+      setIsMapLoaded(false);
     };
-  }, [tokenMissing, reloadAssets]);
+  }, [tokenMissing]);
+
+  useEffect(() => {
+    if (!isMapLoaded || !mapRef.current) {
+      return;
+    }
+
+    upsertAssetLayer(mapRef.current, assetsGeoJson);
+  }, [assetsGeoJson, isMapLoaded]);
+
+  useEffect(() => {
+    if (selectedAsset && !assetMatchesFilters(selectedAsset, filters)) {
+      clearSelectedAsset();
+    }
+  }, [clearSelectedAsset, filters, selectedAsset]);
+
+  useEffect(() => {
+    if (!isMapLoaded) {
+      return;
+    }
+
+    const abortController = new AbortController();
+
+    void reloadAssets(abortController.signal, filters)
+      .then((geoJson) => {
+        if (!hasActiveFilters) {
+          setTotalAssetsCount(geoJson.features.length);
+        }
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
+
+        const errorMessage = getErrorMessage(error);
+        console.error('Failed to load filtered meteorology assets from API', error);
+        setFormStatus(`Falha ao carregar entregaveis da API: ${errorMessage}`);
+      });
+
+    if (hasActiveFilters && totalAssetsCount === 0) {
+      const totalAbortController = new AbortController();
+
+      void fetchMeteorologyAssets(totalAbortController.signal, initialAssetFilters)
+        .then((geoJson) => setTotalAssetsCount(geoJson.features.length))
+        .catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === 'AbortError') {
+            return;
+          }
+
+          console.error('Failed to load total meteorology assets count from API', error);
+        });
+
+      return () => {
+        abortController.abort();
+        totalAbortController.abort();
+      };
+    }
+
+    return () => {
+      abortController.abort();
+    };
+  }, [filters, hasActiveFilters, isMapLoaded, reloadAssets, totalAssetsCount]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -255,7 +338,11 @@ function App() {
         upsertSelectedPointLayer(mapRef.current, null);
         upsertSelectedCoverageLayer(mapRef.current, null);
         const abortController = new AbortController();
-        await reloadAssets(abortController.signal);
+        const geoJson = await reloadAssets(abortController.signal, filters);
+
+        if (!hasActiveFilters) {
+          setTotalAssetsCount(geoJson.features.length);
+        }
       }
     } catch (error: unknown) {
       const errorMessage = getErrorMessage(error);
@@ -296,14 +383,20 @@ function App() {
       <MapCanvas containerRef={mapContainerRef} />
 
       {!tokenMissing && (
+        <AssetFiltersPanel
+          filters={filters}
+          municipalities={municipalities}
+          totalCount={totalAssetsCount || assetsGeoJson.features.length}
+          visibleCount={assetsGeoJson.features.length}
+          onChange={setFilters}
+          onClear={() => setFilters(initialAssetFilters)}
+        />
+      )}
+
+      {!tokenMissing && (
         <MapActions
-          isFormExpanded={isFormExpanded}
           selectedAsset={selectedAsset}
           isDetailsExpanded={isDetailsExpanded}
-          onOpenForm={() => {
-            setIsFormExpanded(true);
-            setIsDetailsExpanded(false);
-          }}
           onToggleForm={() => {
             setIsFormExpanded((currentValue) => !currentValue);
             setIsDetailsExpanded(false);

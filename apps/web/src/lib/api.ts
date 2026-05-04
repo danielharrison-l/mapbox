@@ -1,4 +1,5 @@
 import type {
+  AssetFilters,
   CreateMeteorologyAssetRequest,
   MeteorologyAssetsGeoJsonResponse,
   MeteorologyAssetsPointCollection,
@@ -10,8 +11,19 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000
 
 export async function fetchMeteorologyAssets(
   signal: AbortSignal,
+  filters?: AssetFilters,
 ): Promise<MeteorologyAssetsPointCollection> {
-  const response = await fetch(`${API_BASE_URL}/geo/meteorology-assets/geojson`, {
+  const url = new URL(`${API_BASE_URL}/geo/meteorology-assets/geojson`);
+
+  if (filters?.state && filters.state !== 'ALL') {
+    url.searchParams.set('state', filters.state);
+  }
+
+  if (filters?.status && filters.status !== 'ALL') {
+    url.searchParams.set('status', filters.status);
+  }
+
+  const response = await fetch(url, {
     signal,
   });
 

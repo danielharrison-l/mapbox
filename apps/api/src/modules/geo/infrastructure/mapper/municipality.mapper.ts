@@ -7,12 +7,13 @@ export class MunicipalityMapper {
     return {
       id: entity.id,
       name: entity.name,
+      state: entity.state,
       population: entity.population,
     };
   }
 
   public static toOutputList(entities: Municipality[]): MunicipalityOutput[] {
-    return entities.map((entity) => this.toOutput(entity));
+    return entities.map((entity) => MunicipalityMapper.toOutput(entity));
   }
 
   public static toResponse(output: MunicipalityOutput): MunicipalityResponse {
@@ -20,12 +21,13 @@ export class MunicipalityMapper {
 
     response.id = output.id;
     response.name = output.name;
+    response.state = output.state;
     response.population = output.population;
 
     return response;
   }
 
   public static toResponseList(outputs: MunicipalityOutput[]): MunicipalityResponse[] {
-    return outputs.map((output) => this.toResponse(output));
+    return outputs.map((output) => MunicipalityMapper.toResponse(output));
   }
 }

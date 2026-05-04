@@ -106,6 +106,7 @@ export function AssetCreatePanel({
                 >
                   {municipalities.map((municipality) => (
                     <option key={municipality.id} value={municipality.id}>
+                      {municipality.state ? `${municipality.state} - ` : ''}
                       {municipality.name}
                     </option>
                   ))}

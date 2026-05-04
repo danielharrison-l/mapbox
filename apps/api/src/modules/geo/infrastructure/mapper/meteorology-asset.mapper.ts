@@ -7,14 +7,12 @@ import type {
   MeteorologyAssetGeoJsonPropertiesResponse,
   MeteorologyAssetGeoJsonResponse,
 } from '../../http/responses/meteorology-asset-geojson.response';
-import { InfrastructurePointMapper } from './infrastructure-point.mapper';
-import { MeteorologyAsset } from '../persistence/entities/meteorology-asset.entity';
 import type { InfrastructurePoint } from '../persistence/entities/infrastructure-point.entity';
+import { MeteorologyAsset } from '../persistence/entities/meteorology-asset.entity';
+import { InfrastructurePointMapper } from './infrastructure-point.mapper';
 
 export class MeteorologyAssetMapper {
-  public static toCreateInput(
-    request: CreateMeteorologyAssetRequest,
-  ): CreateMeteorologyAssetInput {
+  public static toCreateInput(request: CreateMeteorologyAssetRequest): CreateMeteorologyAssetInput {
     return {
       name: request.name,
       description: request.description ?? null,
@@ -55,14 +53,10 @@ export class MeteorologyAssetMapper {
     return meteorologyAsset;
   }
 
-  public static toGeoJsonResponse(
-    entities: MeteorologyAsset[],
-  ): MeteorologyAssetGeoJsonResponse {
+  public static toGeoJsonResponse(entities: MeteorologyAsset[]): MeteorologyAssetGeoJsonResponse {
     return {
       type: 'FeatureCollection',
-      features: entities.map((entity) =>
-        MeteorologyAssetMapper.toGeoJsonFeatureResponse(entity),
-      ),
+      features: entities.map((entity) => MeteorologyAssetMapper.toGeoJsonFeatureResponse(entity)),
     };
   }
 
@@ -71,9 +65,7 @@ export class MeteorologyAssetMapper {
   ): MeteorologyAssetGeoJsonFeatureResponse {
     return {
       type: 'Feature',
-      geometry: MeteorologyAssetMapper.toGeoJsonGeometry(
-        entity.infrastructurePoint.geometry,
-      ),
+      geometry: MeteorologyAssetMapper.toGeoJsonGeometry(entity.infrastructurePoint.geometry),
       properties: MeteorologyAssetMapper.toGeoJsonPropertiesResponse(entity),
     };
   }
@@ -88,6 +80,7 @@ export class MeteorologyAssetMapper {
       description: entity.infrastructurePoint.description,
       municipalityId: entity.infrastructurePoint.municipalityId,
       municipalityName: entity.infrastructurePoint.municipality?.name ?? null,
+      municipalityState: entity.infrastructurePoint.municipality?.state ?? null,
       status: entity.status,
       coverageArea: MeteorologyAssetMapper.toGeoJsonGeometry(entity.coverageArea),
     };

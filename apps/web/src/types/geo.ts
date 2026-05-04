@@ -1,8 +1,15 @@
 export type MeteorologyAssetStatus = 'NOT_STARTED' | 'STARTED' | 'CONCLUDED';
+export type AssetFilterValue = 'ALL';
+
+export type AssetFilters = {
+  state: string | AssetFilterValue;
+  status: MeteorologyAssetStatus | AssetFilterValue;
+};
 
 export type Municipality = {
   id: number;
   name: string;
+  state: string | null;
   population: number;
 };
 
@@ -23,6 +30,7 @@ export type MeteorologyAssetGeoJsonProperties = {
   description: string | null;
   municipalityId: number;
   municipalityName: string | null;
+  municipalityState: string | null;
   status: MeteorologyAssetStatus;
   coverageArea: PolygonGeometry | null;
 };

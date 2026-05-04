@@ -1,4 +1,4 @@
-import { Column, Entity, JoinColumn, OneToOne, PrimaryColumn } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, OneToOne, PrimaryColumn } from 'typeorm';
 import { InfrastructurePoint } from './infrastructure-point.entity';
 
 export enum MeteorologyAssetStatus {
@@ -22,6 +22,7 @@ export class MeteorologyAsset {
     enumName: 'meteorology_asset_status_enum',
     default: MeteorologyAssetStatus.NOT_STARTED,
   })
+  @Index()
   status!: MeteorologyAssetStatus;
 
   @Column({

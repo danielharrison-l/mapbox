@@ -1,7 +1,9 @@
 import type {
+  AssetFilters,
   MeteorologyAssetApiFeature,
   MeteorologyAssetPointFeature,
   MeteorologyAssetStatus,
+  Municipality,
   PolygonGeometry,
 } from '../types/geo';
 
@@ -100,6 +102,27 @@ export function getStatusLabel(status: MeteorologyAssetStatus): string {
   };
 
   return labels[status];
+}
+
+export function getStateOptions(municipalities: Municipality[]): string[] {
+  return Array.from(
+    new Set(
+      municipalities
+        .map((municipality) => municipality.state)
+        .filter((state): state is string => Boolean(state)),
+    ),
+  ).sort((firstState, secondState) => firstState.localeCompare(secondState));
+}
+
+export function assetMatchesFilters(
+  asset: MeteorologyAssetPointFeature,
+  filters: AssetFilters,
+): boolean {
+  const matchesState =
+    filters.state === 'ALL' || asset.properties.municipalityState === filters.state;
+  const matchesStatus = filters.status === 'ALL' || asset.properties.status === filters.status;
+
+  return matchesState && matchesStatus;
 }
 
 export function getStatusPillClassName(status: MeteorologyAssetStatus): string {

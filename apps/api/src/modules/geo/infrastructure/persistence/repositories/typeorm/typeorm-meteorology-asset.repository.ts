@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
+import type { FindMeteorologyAssetsInput } from '../../../../application/dto/find-meteorology-assets.input';
 import { MeteorologyAsset } from '../../entities/meteorology-asset.entity';
 import type { MeteorologyAssetRepository } from '../meteorology-asset.repository';
 
@@ -15,17 +16,26 @@ export class TypeOrmMeteorologyAssetRepository implements MeteorologyAssetReposi
     return this.repository.save(entity);
   }
 
-  public async findAll(): Promise<MeteorologyAsset[]> {
-    return this.repository.find({
-      relations: {
-        infrastructurePoint: {
-          municipality: true,
-        },
-      },
-      order: {
-        infrastructurePointId: 'ASC',
-      },
-    });
+  public async findAll(filters: FindMeteorologyAssetsInput = {}): Promise<MeteorologyAsset[]> {
+    const queryBuilder = this.repository
+      .createQueryBuilder('meteorologyAsset')
+      .innerJoinAndSelect('meteorologyAsset.infrastructurePoint', 'infrastructurePoint')
+      .innerJoinAndSelect('infrastructurePoint.municipality', 'municipality')
+      .orderBy('meteorologyAsset.infrastructurePointId', 'ASC');
+
+    if (filters.status) {
+      queryBuilder.andWhere('meteorologyAsset.status = :status', {
+        status: filters.status,
+      });
+    }
+
+    if (filters.state) {
+      queryBuilder.andWhere('municipality.state = :state', {
+        state: filters.state,
+      });
+    }
+
+    return queryBuilder.getMany();
   }
 
   public async findByInfrastructurePointId(

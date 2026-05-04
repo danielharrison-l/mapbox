@@ -1,4 +1,4 @@
-import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Municipality } from './municipality.entity';
 
 @Entity('infrastructure_point')
@@ -13,6 +13,7 @@ export class InfrastructurePoint {
   description!: string | null;
 
   @Column({ name: 'municipality_id', type: 'int' })
+  @Index()
   municipalityId!: number;
 
   @ManyToOne(() => Municipality)

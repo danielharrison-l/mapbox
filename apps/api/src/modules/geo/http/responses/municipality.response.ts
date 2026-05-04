@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import type { BrazilianState } from '../../domain/brazilian-state';
 
 export class MunicipalityResponse {
   @ApiProperty({
@@ -10,6 +11,12 @@ export class MunicipalityResponse {
     example: 'Piranhas',
   })
   public name!: string;
+
+  @ApiProperty({
+    example: 'AL',
+    nullable: true,
+  })
+  public state!: BrazilianState | null;
 
   @ApiProperty({
     example: 24000,
