@@ -8,6 +8,7 @@ import {
   MeteorologyAssetStatus,
 } from '../../infrastructure/persistence/entities/meteorology-asset.entity';
 import { Municipality } from '../../infrastructure/persistence/entities/municipality.entity';
+import { SocioeconomicArea } from '../../infrastructure/persistence/entities/socioeconomic-area.entity';
 
 type PointGeometry = {
   type: 'Point';
@@ -26,7 +27,16 @@ type MunicipalitySeed = {
   coordinates: [number, number];
 };
 
+type SocioeconomicAreaSeed = {
+  name: string;
+  state: BrazilianState;
+  population: number;
+  averageMonthlyIncome: number;
+  coordinates: [number, number];
+};
+
 const TARGET_METEOROLOGY_ASSETS_COUNT = 90;
+const SOCIOECONOMIC_AREAS_PER_METEOROLOGY_ASSET = 3;
 
 const MUNICIPALITY_SEED_DATA: MunicipalitySeed[] = [
   { name: 'Rio Branco', state: 'AC', population: 364756, coordinates: [-67.8243, -9.974] },
@@ -69,6 +79,8 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
     private readonly infrastructurePointRepository: Repository<InfrastructurePoint>,
     @InjectRepository(MeteorologyAsset)
     private readonly meteorologyAssetRepository: Repository<MeteorologyAsset>,
+    @InjectRepository(SocioeconomicArea)
+    private readonly socioeconomicAreaRepository: Repository<SocioeconomicArea>,
   ) {}
 
   public async onApplicationBootstrap(): Promise<void> {
@@ -83,15 +95,18 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
     await this.meteorologyAssetRepository.createQueryBuilder().delete().execute();
     await this.infrastructurePointRepository.createQueryBuilder().delete().execute();
     await this.municipalityRepository.createQueryBuilder().delete().execute();
+    await this.socioeconomicAreaRepository.createQueryBuilder().delete().execute();
 
     const municipalities = await this.municipalityRepository.save(
       MUNICIPALITY_SEED_DATA.map((seed) => this.municipalityRepository.create(seed)),
     );
+    const socioeconomicAreaSeeds: SocioeconomicAreaSeed[] = [];
 
     for (let assetNumber = 1; assetNumber <= TARGET_METEOROLOGY_ASSETS_COUNT; assetNumber += 1) {
       const municipalityIndex = (assetNumber - 1) % municipalities.length;
+      const municipalitySeed = MUNICIPALITY_SEED_DATA[municipalityIndex];
       const coordinates = this.createAssetCoordinates(
-        MUNICIPALITY_SEED_DATA[municipalityIndex].coordinates,
+        municipalitySeed.coordinates,
         assetNumber,
       );
       const infrastructurePoint = await this.infrastructurePointRepository.save(
@@ -111,9 +126,27 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
           coverageArea: this.createCoverageArea(coordinates, assetNumber) as unknown as string,
         }),
       );
+
+      socioeconomicAreaSeeds.push(
+        ...this.createSocioeconomicAreaSeeds(municipalitySeed, coordinates, assetNumber),
+      );
     }
 
-    this.logger.log(`Geo mock reset completed with ${TARGET_METEOROLOGY_ASSETS_COUNT} assets.`);
+    await this.socioeconomicAreaRepository.save(
+      socioeconomicAreaSeeds.map((seed) =>
+        this.socioeconomicAreaRepository.create({
+          name: seed.name,
+          state: seed.state,
+          population: seed.population,
+          averageMonthlyIncome: seed.averageMonthlyIncome,
+          geometry: this.createPointGeometry(seed.coordinates) as unknown as string,
+        }),
+      ),
+    );
+
+    this.logger.log(
+      `Geo mock reset completed with ${TARGET_METEOROLOGY_ASSETS_COUNT} assets and ${socioeconomicAreaSeeds.length} socioeconomic areas.`,
+    );
   }
 
   private createAssetCoordinates(
@@ -156,6 +189,31 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
       type: 'Polygon',
       coordinates: [coordinates],
     };
+  }
+
+  private createSocioeconomicAreaSeeds(
+    municipalitySeed: MunicipalitySeed,
+    [lng, lat]: [number, number],
+    assetNumber: number,
+  ): SocioeconomicAreaSeed[] {
+    const offsets: Array<[number, number]> = [
+      [0, 0],
+      [0.035, 0.018],
+      [-0.032, -0.021],
+    ];
+
+    return offsets.slice(0, SOCIOECONOMIC_AREAS_PER_METEOROLOGY_ASSET).map(
+      ([lngOffset, latOffset], index): SocioeconomicAreaSeed => ({
+        name: `Setor Socioeconomico ${String(assetNumber).padStart(2, '0')}-${index + 1}`,
+        state: municipalitySeed.state,
+        population: 350 + ((assetNumber * 137 + index * 211) % 1450),
+        averageMonthlyIncome: 1200 + ((assetNumber * 173 + index * 397) % 5200),
+        coordinates: [
+          Number((lng + lngOffset).toFixed(6)),
+          Number((lat + latOffset).toFixed(6)),
+        ],
+      }),
+    );
   }
 
   private createStatus(assetNumber: number): MeteorologyAssetStatus {

@@ -4,6 +4,7 @@ import dataSource from '../../../../database/typeorm/data-source';
 import { InfrastructurePoint } from '../../infrastructure/persistence/entities/infrastructure-point.entity';
 import { MeteorologyAsset } from '../../infrastructure/persistence/entities/meteorology-asset.entity';
 import { Municipality } from '../../infrastructure/persistence/entities/municipality.entity';
+import { SocioeconomicArea } from '../../infrastructure/persistence/entities/socioeconomic-area.entity';
 import { SeedMunicipalitiesService } from './seed-municipalities.service';
 
 async function runGeoSeed(): Promise<void> {
@@ -16,6 +17,7 @@ async function runGeoSeed(): Promise<void> {
       dataSource.getRepository(Municipality),
       dataSource.getRepository(InfrastructurePoint),
       dataSource.getRepository(MeteorologyAsset),
+      dataSource.getRepository(SocioeconomicArea),
     );
 
     await seedService.resetGeoMock();
