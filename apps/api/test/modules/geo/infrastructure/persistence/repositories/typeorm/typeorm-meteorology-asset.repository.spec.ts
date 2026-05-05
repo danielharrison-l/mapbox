@@ -5,7 +5,7 @@ import { TypeOrmMeteorologyAssetRepository } from '../../../../../../../src/modu
 import type { MeteorologyAsset } from '../../../../../../../src/modules/geo/infrastructure/persistence/entities/meteorology-asset.entity';
 
 describe('TypeOrmMeteorologyAssetRepository', () => {
-  it('crosses socioeconomic data contained by a meteorology asset coverage polygon with PostGIS', async () => {
+  it('crosses socioeconomic data covered by a meteorology asset coverage polygon with PostGIS', async () => {
     const queries: Array<{ sql: string; params: unknown[] }> = [];
     const repository = {
       query: async (sql: string, params: unknown[]) => {
@@ -24,6 +24,10 @@ describe('TypeOrmMeteorologyAssetRepository', () => {
                 state: 'AL',
                 population: 500,
                 averageMonthlyIncome: 2000,
+                geometry: {
+                  type: 'Point',
+                  coordinates: [-35.735, -9.6658],
+                },
               },
               {
                 id: 2,
@@ -31,6 +35,10 @@ describe('TypeOrmMeteorologyAssetRepository', () => {
                 state: 'AL',
                 population: 1000,
                 averageMonthlyIncome: 3125.75,
+                geometry: {
+                  type: 'Point',
+                  coordinates: [-35.734, -9.6648],
+                },
               },
             ],
           },
@@ -53,6 +61,10 @@ describe('TypeOrmMeteorologyAssetRepository', () => {
         state: 'AL',
         population: 500,
         averageMonthlyIncome: 2000,
+        geometry: {
+          type: 'Point',
+          coordinates: [-35.735, -9.6658],
+        },
       },
       {
         id: 2,
@@ -60,10 +72,15 @@ describe('TypeOrmMeteorologyAssetRepository', () => {
         state: 'AL',
         population: 1000,
         averageMonthlyIncome: 3125.75,
+        geometry: {
+          type: 'Point',
+          coordinates: [-35.734, -9.6648],
+        },
       },
     ]);
     assert.equal(queries[0].params[0], 42);
-    assert.match(queries[0].sql, /ST_Contains\(/);
+    assert.match(queries[0].sql, /ST_Covers\(/);
+    assert.match(queries[0].sql, /ST_AsGeoJSON\(/);
     assert.match(queries[0].sql, /meteorology_asset/);
     assert.match(queries[0].sql, /socioeconomic_area/);
   });

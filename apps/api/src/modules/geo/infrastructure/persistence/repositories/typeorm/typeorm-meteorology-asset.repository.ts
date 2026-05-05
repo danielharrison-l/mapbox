@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
 import type {
   CoverageSocioeconomicAreaOutput,
+  CoverageSocioeconomicAreaGeometryOutput,
   CoverageSocioeconomicDataOutput,
 } from '../../../../application/dto/coverage-socioeconomic-data.output';
 import type { FindMeteorologyAssetsInput } from '../../../../application/dto/find-meteorology-assets.input';
@@ -16,6 +17,7 @@ type CoverageSocioeconomicAreaRow = {
   state: BrazilianState | null;
   population: number | string;
   averageMonthlyIncome: number | string;
+  geometry: CoverageSocioeconomicAreaGeometryOutput | string | null;
 };
 
 type CoverageSocioeconomicDataRow = {
@@ -99,7 +101,8 @@ export class TypeOrmMeteorologyAssetRepository implements MeteorologyAssetReposi
                 'name', socioeconomic_area.name,
                 'state', socioeconomic_area.state,
                 'population', socioeconomic_area.population,
-                'averageMonthlyIncome', socioeconomic_area.average_monthly_income
+                'averageMonthlyIncome', socioeconomic_area.average_monthly_income,
+                'geometry', ST_AsGeoJSON(socioeconomic_area.geometry)::json
               )
               ORDER BY socioeconomic_area.id
             ) FILTER (WHERE socioeconomic_area.id IS NOT NULL),
@@ -107,7 +110,7 @@ export class TypeOrmMeteorologyAssetRepository implements MeteorologyAssetReposi
           ) AS "areas"
         FROM meteorology_asset asset
         LEFT JOIN socioeconomic_area socioeconomic_area
-          ON ST_Contains(asset.coverage_area, socioeconomic_area.geometry)
+          ON ST_Covers(asset.coverage_area, socioeconomic_area.geometry)
         WHERE asset.infrastructure_point_id = $1
         GROUP BY asset.infrastructure_point_id
       `,
@@ -143,6 +146,27 @@ export class TypeOrmMeteorologyAssetRepository implements MeteorologyAssetReposi
       state: area.state,
       population: Number(area.population),
       averageMonthlyIncome: Number(area.averageMonthlyIncome),
+      geometry: this.parseCoverageSocioeconomicAreaGeometry(area.geometry),
     }));
+  }
+
+  private parseCoverageSocioeconomicAreaGeometry(
+    geometry: CoverageSocioeconomicAreaRow['geometry'],
+  ): CoverageSocioeconomicAreaGeometryOutput | null {
+    const parsedGeometry =
+      typeof geometry === 'string'
+        ? (JSON.parse(geometry) as CoverageSocioeconomicAreaGeometryOutput)
+        : geometry;
+
+    if (
+      parsedGeometry?.type !== 'Point' ||
+      !Array.isArray(parsedGeometry.coordinates) ||
+      parsedGeometry.coordinates.length !== 2 ||
+      parsedGeometry.coordinates.some((coordinate) => typeof coordinate !== 'number')
+    ) {
+      return null;
+    }
+
+    return parsedGeometry;
   }
 }

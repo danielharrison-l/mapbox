@@ -28,6 +28,18 @@ export class CoverageSocioeconomicAreaResponse {
     description: 'Renda media mensal em BRL.',
   })
   public averageMonthlyIncome!: number;
+
+  @ApiProperty({
+    example: {
+      type: 'Point',
+      coordinates: [-35.735, -9.6658],
+    },
+    nullable: true,
+  })
+  public geometry!: {
+    type: 'Point';
+    coordinates: [number, number];
+  } | null;
 }
 
 export class CoverageSocioeconomicDataResponse {

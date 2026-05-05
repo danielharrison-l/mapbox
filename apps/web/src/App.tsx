@@ -26,6 +26,7 @@ import {
   METEOROLOGY_ASSETS_LAYER_ID,
   readAssetFeature,
   upsertAssetLayer,
+  upsertCoverageSocioeconomicLayer,
   upsertSelectedAssetLayer,
   upsertSelectedCoverageLayer,
   upsertSelectedPointLayer,
@@ -801,6 +802,14 @@ function App() {
 
     upsertSelectedCoverageLayer(mapRef.current, isSelectedCoverageVisible ? selectedAsset : null);
   }, [isMapLoaded, isSelectedCoverageVisible, selectedAsset]);
+
+  useEffect(() => {
+    if (!isMapLoaded || !mapRef.current) {
+      return;
+    }
+
+    upsertCoverageSocioeconomicLayer(mapRef.current, coverageSocioeconomicData);
+  }, [coverageSocioeconomicData, isMapLoaded]);
 
   useEffect(() => {
     const map = mapRef.current;

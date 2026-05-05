@@ -1,5 +1,6 @@
 import mapboxgl from 'mapbox-gl';
 import type {
+  CoverageSocioeconomicData,
   MeteorologyAssetPointFeature,
   MeteorologyAssetsPointCollection,
   PointGeometry,
@@ -22,6 +23,8 @@ const SELECTED_ASSET_LAYER_ID = 'selected-meteorology-asset-layer';
 const SELECTED_COVERAGE_SOURCE_ID = 'selected-asset-coverage';
 const SELECTED_COVERAGE_FILL_LAYER_ID = 'selected-asset-coverage-fill';
 const SELECTED_COVERAGE_LINE_LAYER_ID = 'selected-asset-coverage-line';
+const COVERAGE_SOCIOECONOMIC_SOURCE_ID = 'coverage-socioeconomic-areas';
+const COVERAGE_SOCIOECONOMIC_LAYER_ID = 'coverage-socioeconomic-areas-points';
 
 type SelectedPointCollection = {
   type: 'FeatureCollection';
@@ -46,6 +49,21 @@ type SelectedCoverageCollection = {
       assetId: number;
       name: string;
       status: string;
+    };
+  }>;
+};
+
+type CoverageSocioeconomicAreaCollection = {
+  type: 'FeatureCollection';
+  features: Array<{
+    type: 'Feature';
+    geometry: PointGeometry;
+    properties: {
+      id: number;
+      name: string;
+      state: string | null;
+      population: number;
+      averageMonthlyIncome: number;
     };
   }>;
 };
@@ -104,6 +122,28 @@ function createSelectedCoverageCollection(
         },
       },
     ],
+  };
+}
+
+function createCoverageSocioeconomicAreaCollection(
+  data: CoverageSocioeconomicData | null,
+): CoverageSocioeconomicAreaCollection {
+  return {
+    type: 'FeatureCollection',
+    features:
+      data?.areas
+        .filter((area) => area.geometry)
+        .map((area) => ({
+          type: 'Feature',
+          geometry: area.geometry as PointGeometry,
+          properties: {
+            id: area.id,
+            name: area.name,
+            state: area.state,
+            population: area.population,
+            averageMonthlyIncome: area.averageMonthlyIncome,
+          },
+        })) ?? [],
   };
 }
 
@@ -274,6 +314,40 @@ export function upsertSelectedCoverageLayer(
       beforeAssetLayer,
     );
   }
+}
+
+export function upsertCoverageSocioeconomicLayer(
+  map: mapboxgl.Map,
+  data: CoverageSocioeconomicData | null,
+) {
+  const geoJson = createCoverageSocioeconomicAreaCollection(data);
+  const source = map.getSource(COVERAGE_SOCIOECONOMIC_SOURCE_ID);
+
+  if (source) {
+    (source as mapboxgl.GeoJSONSource).setData(geoJson);
+  } else {
+    map.addSource(COVERAGE_SOCIOECONOMIC_SOURCE_ID, {
+      type: 'geojson',
+      data: geoJson,
+    });
+  }
+
+  if (map.getLayer(COVERAGE_SOCIOECONOMIC_LAYER_ID)) {
+    return;
+  }
+
+  map.addLayer({
+    id: COVERAGE_SOCIOECONOMIC_LAYER_ID,
+    type: 'circle',
+    source: COVERAGE_SOCIOECONOMIC_SOURCE_ID,
+    paint: {
+      'circle-color': '#10b981',
+      'circle-radius': 6,
+      'circle-stroke-color': '#064e3b',
+      'circle-stroke-width': 2,
+      'circle-opacity': 0.92,
+    },
+  });
 }
 
 export function getPolygonBounds(polygon: PolygonGeometry): mapboxgl.LngLatBounds | null {

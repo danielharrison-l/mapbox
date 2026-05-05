@@ -324,7 +324,7 @@ function OperationalSidebarShell({
   setForm,
   setModelCalibration,
 }: OperationalSidebarProps) {
-  const { open, toggleSidebar } = useSidebar();
+  const { open, setOpen, toggleSidebar } = useSidebar();
   const stateOptions = getStateOptions(municipalities);
   const hasActiveFilters = filters.state !== 'ALL' || filters.status !== 'ALL';
   const coverageVerticesCount = getCoverageVerticesCount(coverageArea);
@@ -344,6 +344,10 @@ function OperationalSidebarShell({
     : selectedPoint
       ? 'Novo ponto'
       : 'Sem selecao';
+  const handleModeNavigation = (nextMode: OperationalSidebarMode) => {
+    onChangeMode(nextMode);
+    setOpen(nextMode === mode ? !open : true);
+  };
 
   return (
     <Sidebar
@@ -383,7 +387,7 @@ function OperationalSidebarShell({
                     disabled={isDisabled}
                     key={item.mode}
                     title={open ? undefined : item.label}
-                    onClick={() => onChangeMode(item.mode)}
+                    onClick={() => handleModeNavigation(item.mode)}
                   >
                     <Icon size={17} strokeWidth={2.2} />
                   </SidebarMenuButton>
@@ -538,7 +542,7 @@ function OperationalSidebarShell({
                     disabled={isDisabled}
                     key={item.mode}
                     type="button"
-                    onClick={() => onChangeMode(item.mode)}
+                    onClick={() => handleModeNavigation(item.mode)}
                   >
                     <Icon size={18} />
                     <span>{item.mobileLabel}</span>
@@ -1071,6 +1075,10 @@ function DataTab({
           <div className="grid gap-5">
             <div className="grid grid-cols-2 gap-3 max-[340px]:grid-cols-1">
               <MetricTrend
+                label="Areas Cruzadas"
+                value={integerFormatter.format(coverageSocioeconomicData.externalAreasCount)}
+              />
+              <MetricTrend
                 label="Populacao Total"
                 value={integerFormatter.format(coverageSocioeconomicData.totalPopulation)}
               />
@@ -1079,6 +1087,45 @@ function DataTab({
                 value={currencyFormatter.format(coverageSocioeconomicData.averageMonthlyIncome)}
               />
             </div>
+
+            <section className="grid gap-2">
+              <h3 className={sectionTitleClassName}>Areas socioeconomicas</h3>
+              {coverageSocioeconomicData.areas.length > 0 ? (
+                <div className="grid max-h-[280px] gap-2 overflow-y-auto pr-1">
+                  {coverageSocioeconomicData.areas.map((area) => (
+                    <div
+                      className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+                      key={area.id}
+                    >
+                      <div className="flex min-w-0 items-start justify-between gap-3">
+                        <div className="grid min-w-0 gap-0.5">
+                          <strong className="min-w-0 truncate text-sm text-slate-900">
+                            {area.name}
+                          </strong>
+                          <span className="text-[11px] font-semibold text-slate-500">
+                            {area.state ?? 'UF nao informada'}
+                          </span>
+                        </div>
+                        <Badge className="shrink-0 bg-emerald-100 text-emerald-800">
+                          #{area.id}
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs text-slate-700">
+                        <span>
+                          Pop.: <strong>{integerFormatter.format(area.population)}</strong>
+                        </span>
+                        <span>
+                          Renda:{' '}
+                          <strong>{currencyFormatter.format(area.averageMonthlyIncome)}</strong>
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <Alert>Nenhuma area socioeconomica foi coberta por este poligono.</Alert>
+              )}
+            </section>
           </div>
         )}
 

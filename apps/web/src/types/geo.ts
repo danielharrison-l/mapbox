@@ -82,6 +82,7 @@ export type CoverageSocioeconomicArea = {
   state: string | null;
   population: number;
   averageMonthlyIncome: number;
+  geometry: PointGeometry | null;
 };
 
 export type CoverageSocioeconomicData = {
