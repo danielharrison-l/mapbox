@@ -2,6 +2,7 @@ import { CreateInfrastructurePointUseCase } from '../create-infrastructure-point
 import { CreateMeteorologyAssetUseCase } from '../create-meteorology-asset.use-case';
 import { FindAllMeteorologyAssetsUseCase } from '../find-all-meteorology-assets.use-case';
 import { FindAllMunicipalitiesUseCase } from '../find-all-municipalities.use-case';
+import { FindCoverageSocioeconomicDataUseCase } from '../find-coverage-socioeconomic-data.use-case';
 import { FindMeteorologyAssetByInfrastructurePointIdUseCase } from '../find-meteorology-asset-by-infrastructure-point-id.use-case';
 
 export const GEO_USE_CASE_PROVIDERS = [
@@ -9,5 +10,6 @@ export const GEO_USE_CASE_PROVIDERS = [
   CreateMeteorologyAssetUseCase,
   FindAllMeteorologyAssetsUseCase,
   FindMeteorologyAssetByInfrastructurePointIdUseCase,
+  FindCoverageSocioeconomicDataUseCase,
   FindAllMunicipalitiesUseCase,
 ];

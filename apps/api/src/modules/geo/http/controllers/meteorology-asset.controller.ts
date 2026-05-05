@@ -21,6 +21,7 @@ import {
 import type { FindMeteorologyAssetsInput } from '../../application/dto/find-meteorology-assets.input';
 import { CreateMeteorologyAssetUseCase } from '../../application/usecases/create-meteorology-asset.use-case';
 import { FindAllMeteorologyAssetsUseCase } from '../../application/usecases/find-all-meteorology-assets.use-case';
+import { FindCoverageSocioeconomicDataUseCase } from '../../application/usecases/find-coverage-socioeconomic-data.use-case';
 import { FindMeteorologyAssetByInfrastructurePointIdUseCase } from '../../application/usecases/find-meteorology-asset-by-infrastructure-point-id.use-case';
 import { isBrazilianState } from '../../domain/brazilian-state';
 import { MeteorologyAssetMapper } from '../../infrastructure/mapper/meteorology-asset.mapper';
@@ -29,6 +30,7 @@ import {
   MeteorologyAssetStatus,
 } from '../../infrastructure/persistence/entities/meteorology-asset.entity';
 import type { CreateMeteorologyAssetRequest } from '../requests/create-meteorology-asset.request';
+import { CoverageSocioeconomicDataResponse } from '../responses/coverage-socioeconomic-data.response';
 import { MeteorologyAssetGeoJsonResponse } from '../responses/meteorology-asset-geojson.response';
 
 @ApiTags('geo')
@@ -38,6 +40,7 @@ export class MeteorologyAssetController {
     private readonly createMeteorologyAssetUseCase: CreateMeteorologyAssetUseCase,
     private readonly findAllMeteorologyAssetsUseCase: FindAllMeteorologyAssetsUseCase,
     private readonly findMeteorologyAssetByInfrastructurePointIdUseCase: FindMeteorologyAssetByInfrastructurePointIdUseCase,
+    private readonly findCoverageSocioeconomicDataUseCase: FindCoverageSocioeconomicDataUseCase,
   ) {}
 
   @Get()
@@ -116,6 +119,37 @@ export class MeteorologyAssetController {
     const meteorologyAsset = await this.findByInfrastructurePointIdOrThrow(infrastructurePointId);
 
     return MeteorologyAssetMapper.toGeoJsonResponse([meteorologyAsset]);
+  }
+
+  @Get('infrastructure-points/:infrastructurePointId/coverage-socioeconomic-data')
+  @ApiOperation({
+    summary: 'Cruza dados socioeconomicos externos com a area de cobertura do asset',
+  })
+  @ApiParam({
+    name: 'infrastructurePointId',
+    description: 'ID do ponto de infraestrutura',
+    type: Number,
+  })
+  @ApiOkResponse({
+    description: 'Dados socioeconomicos cruzados com a cobertura com sucesso',
+    type: CoverageSocioeconomicDataResponse,
+  })
+  @ApiNotFoundResponse({
+    description: 'Asset de meteorologia nao encontrado para o ponto de infraestrutura',
+  })
+  public async findCoverageSocioeconomicData(
+    @Param('infrastructurePointId', ParseIntPipe) infrastructurePointId: number,
+  ): Promise<CoverageSocioeconomicDataResponse> {
+    const coverageSocioeconomicData =
+      await this.findCoverageSocioeconomicDataUseCase.execute(infrastructurePointId);
+
+    if (!coverageSocioeconomicData) {
+      throw new NotFoundException(
+        'Asset de meteorologia nao encontrado para o ponto de infraestrutura informado',
+      );
+    }
+
+    return coverageSocioeconomicData;
   }
 
   @Get('infrastructure-points/:infrastructurePointId')
