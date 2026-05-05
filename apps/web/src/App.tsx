@@ -1,15 +1,14 @@
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import mapboxgl from 'mapbox-gl';
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AssetCreatePanel } from './components/AssetCreatePanel';
-import { AssetDetailsPanel } from './components/AssetDetailsPanel';
-import { AssetFiltersPanel } from './components/AssetFiltersPanel';
-import { MapActions } from './components/MapActions';
 import { MapCanvas } from './components/MapCanvas';
-import { ModelCalibrationPanel } from './components/ModelCalibrationPanel';
+import { OperationalSidebar, type OperationalSidebarMode } from './components/OperationalSidebar';
 import { TokenWarning } from './components/TokenWarning';
 import {
+  API_BASE_URL,
+  ApiError,
   createMeteorologyAsset,
+  fetchCoverageSocioeconomicData,
   fetchMeteorologyAssets,
   fetchMunicipalities,
   reverseGeocodeLocation,
@@ -42,6 +41,7 @@ import {
 import type {
   AssetFilters,
   AssetFormState,
+  CoverageSocioeconomicData,
   CreateMeteorologyAssetRequest,
   MeteorologyAssetPointFeature,
   MeteorologyAssetsPointCollection,
@@ -71,6 +71,8 @@ const emptyAssetsGeoJson: MeteorologyAssetsPointCollection = {
   features: [],
 };
 
+const ASSET_CLICK_HITBOX_PX = 22;
+const MODEL_CLICK_HITBOX_PX = 28;
 const selectedAssetModelUrl = import.meta.env.VITE_3D_MODEL_URL ?? '/models/tower.glb';
 
 const initialModelCalibration: ModelCalibration = {
@@ -97,6 +99,56 @@ function createModelPerformance(status: ModelPerformance['status']): ModelPerfor
   };
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
+function isFetchNetworkError(error: unknown): boolean {
+  return error instanceof TypeError && error.message.toLowerCase().includes('fetch');
+}
+
+function getApiErrorMessage(error: unknown): string {
+  if (isFetchNetworkError(error)) {
+    return `Nao foi possivel conectar ao backend em ${API_BASE_URL}. Verifique se a API esta rodando.`;
+  }
+
+  return getErrorMessage(error);
+}
+
+function coordinatesMatch(
+  firstCoordinates: [number, number],
+  secondCoordinates: [number, number],
+): boolean {
+  const tolerance = 0.000001;
+
+  return (
+    Math.abs(firstCoordinates[0] - secondCoordinates[0]) <= tolerance &&
+    Math.abs(firstCoordinates[1] - secondCoordinates[1]) <= tolerance
+  );
+}
+
+function findReloadedAsset(
+  currentAsset: MeteorologyAssetPointFeature,
+  reloadedAssets: MeteorologyAssetPointFeature[],
+): MeteorologyAssetPointFeature | null {
+  return (
+    reloadedAssets.find(
+      (asset) =>
+        asset.properties.name === currentAsset.properties.name &&
+        asset.properties.municipalityName === currentAsset.properties.municipalityName &&
+        asset.properties.municipalityState === currentAsset.properties.municipalityState &&
+        coordinatesMatch(asset.geometry.coordinates, currentAsset.geometry.coordinates),
+    ) ??
+    reloadedAssets.find(
+      (asset) =>
+        asset.properties.name === currentAsset.properties.name &&
+        asset.properties.municipalityName === currentAsset.properties.municipalityName &&
+        asset.properties.municipalityState === currentAsset.properties.municipalityState,
+    ) ??
+    null
+  );
+}
+
 function clearDrawFeatures(draw: MapboxDraw) {
   const featureIds = draw
     .getAll()
@@ -119,6 +171,9 @@ function App() {
   const isDrawingCoverageRef = useRef(false);
   const suppressNextDrawDeleteRef = useRef(false);
   const clearDrawnCoverageAreaRef = useRef<() => void>(() => undefined);
+  const coverageSocioeconomicAbortControllerRef = useRef<AbortController | null>(null);
+  const coverageSocioeconomicSelectionRefreshRef = useRef<number | null>(null);
+  const selectedCoverageVisibleRef = useRef(true);
   const finalizeCoverageAreaRef = useRef<(nextCoverageArea: PolygonGeometry) => void>(
     () => undefined,
   );
@@ -127,9 +182,9 @@ function App() {
   );
   const assetsByInfrastructurePointIdRef = useRef(new Map<number, MeteorologyAssetPointFeature>());
   const hasFocusedParaModelsRef = useRef(false);
-  const isFormExpandedRef = useRef(false);
   const municipalitiesRef = useRef<Municipality[]>([]);
   const modelMeasurementSequenceRef = useRef(0);
+  const sidebarModeRef = useRef<OperationalSidebarMode>('assets');
   const [formStatus, setFormStatus] = useState('Clique no mapa para escolher o ponto.');
   const [form, setForm] = useState<AssetFormState>(initialFormState);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -141,11 +196,16 @@ function App() {
   const [selectedPoint, setSelectedPoint] = useState<[number, number] | null>(null);
   const [drawnCoverageArea, setDrawnCoverageArea] = useState<PolygonGeometry | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<MeteorologyAssetPointFeature | null>(null);
-  const [isFormExpanded, setIsFormExpanded] = useState(false);
-  const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
+  const [coverageSocioeconomicData, setCoverageSocioeconomicData] =
+    useState<CoverageSocioeconomicData | null>(null);
+  const [coverageSocioeconomicStatus, setCoverageSocioeconomicStatus] = useState<
+    'idle' | 'loading' | 'complete' | 'failed'
+  >('idle');
+  const [coverageSocioeconomicError, setCoverageSocioeconomicError] = useState<string | null>(null);
+  const [isSelectedCoverageVisible, setIsSelectedCoverageVisible] = useState(true);
+  const [sidebarMode, setSidebarMode] = useState<OperationalSidebarMode>('assets');
   const [isDrawingCoverage, setIsDrawingCoverage] = useState(false);
   const [isMapLoaded, setIsMapLoaded] = useState(false);
-  const [isModelCalibrationOpen, setIsModelCalibrationOpen] = useState(false);
   const [modelCalibration, setModelCalibration] =
     useState<ModelCalibration>(initialModelCalibration);
   const [modelPerformance, setModelPerformance] = useState<ModelPerformance>(
@@ -167,10 +227,16 @@ function App() {
     () => filters.state !== 'ALL' || filters.status !== 'ALL',
     [filters],
   );
+  const selectedAssetInfrastructurePointId =
+    selectedAsset?.properties.infrastructurePointId ?? null;
 
   const clearSelectedAsset = useCallback(() => {
+    coverageSocioeconomicAbortControllerRef.current?.abort();
     setSelectedAsset(null);
-    setIsDetailsExpanded(false);
+    setCoverageSocioeconomicData(null);
+    setCoverageSocioeconomicStatus('idle');
+    setCoverageSocioeconomicError(null);
+    setSidebarMode('assets');
 
     if (!mapRef.current || !isMapLoaded) {
       return;
@@ -179,6 +245,20 @@ function App() {
     upsertSelectedCoverageLayer(mapRef.current, null);
     upsertSelectedAssetLayer(mapRef.current, null);
   }, [isMapLoaded]);
+
+  const setSelectedCoverageVisibility = useCallback(
+    (visible: boolean) => {
+      selectedCoverageVisibleRef.current = visible;
+      setIsSelectedCoverageVisible(visible);
+
+      if (!mapRef.current || !isMapLoaded) {
+        return;
+      }
+
+      upsertSelectedCoverageLayer(mapRef.current, visible ? selectedAsset : null);
+    },
+    [isMapLoaded, selectedAsset],
+  );
 
   const clearDrawnCoverageArea = useCallback(() => {
     const draw = drawRef.current;
@@ -215,6 +295,7 @@ function App() {
     draw.changeMode('draw_polygon');
     isDrawingCoverageRef.current = true;
     setIsDrawingCoverage(true);
+    setSidebarMode('coverage');
     setFormStatus('Marque a area. Clique no primeiro ponto ou em Concluir area para finalizar.');
   }, [clearDrawnCoverageArea, selectedPoint]);
 
@@ -278,26 +359,24 @@ function App() {
     }, 0);
   }, [finalizeCoverageArea]);
 
-  const closeCreatePanel = useCallback(() => {
+  const resetCreateDraft = useCallback(() => {
     clearDrawnCoverageArea();
     setSelectedPoint(null);
-    setIsFormExpanded(false);
+    setSidebarMode('assets');
+    setForm(() => ({
+      ...initialFormState,
+      municipalityId: '',
+    }));
+    setFormStatus('Clique no mapa para escolher o ponto.');
 
     if (mapRef.current && isMapLoaded) {
       upsertSelectedPointLayer(mapRef.current, null);
     }
   }, [clearDrawnCoverageArea, isMapLoaded]);
 
-  const toggleCreatePanel = useCallback(() => {
-    setIsDetailsExpanded(false);
-
-    if (isFormExpanded) {
-      closeCreatePanel();
-      return;
-    }
-
+  const startCreateWorkflow = useCallback(() => {
     setSelectedAsset(null);
-    setIsFormExpanded(true);
+    setSidebarMode('create');
     setFormStatus(
       selectedPoint
         ? 'Ponto selecionado. Desenhe a area de cobertura.'
@@ -308,7 +387,7 @@ function App() {
       upsertSelectedCoverageLayer(mapRef.current, null);
       upsertSelectedAssetLayer(mapRef.current, null);
     }
-  }, [closeCreatePanel, isFormExpanded, isMapLoaded, selectedPoint]);
+  }, [isMapLoaded, selectedPoint]);
 
   const resolveSelectedPointLocation = useCallback(
     (coordinates: [number, number]) => {
@@ -389,6 +468,26 @@ function App() {
   }, [resolveSelectedPointLocation]);
 
   useEffect(() => {
+    if (selectedAssetInfrastructurePointId === null) {
+      coverageSocioeconomicAbortControllerRef.current?.abort();
+      setCoverageSocioeconomicData(null);
+      setCoverageSocioeconomicStatus('idle');
+      setCoverageSocioeconomicError(null);
+      return;
+    }
+
+    if (coverageSocioeconomicSelectionRefreshRef.current === selectedAssetInfrastructurePointId) {
+      coverageSocioeconomicSelectionRefreshRef.current = null;
+      return;
+    }
+
+    coverageSocioeconomicAbortControllerRef.current?.abort();
+    setCoverageSocioeconomicData(null);
+    setCoverageSocioeconomicStatus('idle');
+    setCoverageSocioeconomicError(null);
+  }, [selectedAssetInfrastructurePointId]);
+
+  useEffect(() => {
     const abortController = new AbortController();
 
     void fetchMunicipalities(abortController.signal)
@@ -422,8 +521,8 @@ function App() {
   }, [municipalities]);
 
   useEffect(() => {
-    isFormExpandedRef.current = isFormExpanded;
-  }, [isFormExpanded]);
+    sidebarModeRef.current = sidebarMode;
+  }, [sidebarMode]);
 
   useEffect(() => {
     if (tokenMissing || !mapContainerRef.current || mapRef.current) {
@@ -489,42 +588,32 @@ function App() {
     map.on('draw.create', syncDrawnCoverageArea);
     map.on('draw.delete', syncDrawnCoverageArea);
 
-    map.on('click', METEOROLOGY_ASSETS_LAYER_ID, (event) => {
-      if (isFormExpandedRef.current) {
-        return;
-      }
+    const readAssetFromRenderedFeature = (feature: mapboxgl.MapboxGeoJSONFeature) => {
+      const renderedAssetFeature = readAssetFeature(feature);
 
-      assetClickRef.current = true;
-      event.preventDefault();
-
-      const clickedFeature = event.features?.[0];
-      const renderedAssetFeature = clickedFeature ? readAssetFeature(clickedFeature) : null;
-      const assetFeature = renderedAssetFeature
+      return renderedAssetFeature
         ? (assetsByInfrastructurePointIdRef.current.get(
             renderedAssetFeature.properties.infrastructurePointId,
           ) ?? renderedAssetFeature)
         : null;
+    };
 
-      if (!assetFeature) {
-        return;
-      }
-
+    const selectRenderedAsset = (assetFeature: MeteorologyAssetPointFeature) => {
       if (assetFeature.properties.municipalityState === 'PA') {
-        setIsModelCalibrationOpen(true);
-        setIsDetailsExpanded(false);
-        setIsFormExpanded(false);
+        setSelectedAsset(assetFeature);
+        setSidebarMode('model');
         clearDrawnCoverageAreaRef.current();
         setSelectedPoint(null);
         upsertSelectedPointLayer(map, null);
-        upsertSelectedAssetLayer(map, null);
+        upsertSelectedCoverageLayer(map, selectedCoverageVisibleRef.current ? assetFeature : null);
+        upsertSelectedAssetLayer(map, assetFeature);
         return;
       }
 
       setSelectedAsset(assetFeature);
-      setIsDetailsExpanded(true);
-      setIsFormExpanded(false);
+      setSidebarMode('details');
       clearDrawnCoverageAreaRef.current();
-      upsertSelectedCoverageLayer(map, assetFeature);
+      upsertSelectedCoverageLayer(map, selectedCoverageVisibleRef.current ? assetFeature : null);
       upsertSelectedAssetLayer(map, assetFeature);
       setSelectedPoint(null);
       upsertSelectedPointLayer(map, null);
@@ -535,6 +624,65 @@ function App() {
         pitch: 60,
         duration: 700,
       });
+    };
+
+    const queryRenderedFeaturesAroundPoint = (
+      point: mapboxgl.Point,
+      hitbox: number,
+      layers: string[],
+    ) =>
+      map.queryRenderedFeatures(
+        [
+          [point.x - hitbox, point.y - hitbox],
+          [point.x + hitbox, point.y + hitbox],
+        ],
+        { layers },
+      );
+
+    const findNearestAssetAtPoint = (
+      point: mapboxgl.Point,
+      hitbox: number,
+      predicate: (asset: MeteorologyAssetPointFeature) => boolean = () => true,
+    ) => {
+      let nearestAsset: MeteorologyAssetPointFeature | null = null;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+
+      for (const assetFeature of assetsByInfrastructurePointIdRef.current.values()) {
+        if (!predicate(assetFeature)) {
+          continue;
+        }
+
+        const projectedPoint = map.project(assetFeature.geometry.coordinates);
+        const distance = Math.hypot(projectedPoint.x - point.x, projectedPoint.y - point.y);
+
+        if (distance <= hitbox && distance < nearestDistance) {
+          nearestAsset = assetFeature;
+          nearestDistance = distance;
+        }
+      }
+
+      return nearestAsset;
+    };
+
+    map.on('click', METEOROLOGY_ASSETS_LAYER_ID, (event) => {
+      const isCreateWorkflow =
+        sidebarModeRef.current === 'create' || sidebarModeRef.current === 'coverage';
+
+      if (isCreateWorkflow) {
+        return;
+      }
+
+      assetClickRef.current = true;
+      event.preventDefault();
+
+      const clickedFeature = event.features?.[0];
+      const assetFeature = clickedFeature ? readAssetFromRenderedFeature(clickedFeature) : null;
+
+      if (!assetFeature) {
+        return;
+      }
+
+      selectRenderedAsset(assetFeature);
     });
 
     map.on('mouseenter', METEOROLOGY_ASSETS_LAYER_ID, () => {
@@ -560,26 +708,29 @@ function App() {
         return;
       }
 
-      const hitbox = 8;
-      const isCreateMode = isFormExpandedRef.current;
+      const isCreateMode =
+        sidebarModeRef.current === 'create' || sidebarModeRef.current === 'coverage';
 
       if (!isCreateMode) {
         const modelFeatures = map.getLayer(PARA_ASSETS_3D_MODEL_LAYER_ID)
-          ? map.queryRenderedFeatures(
-              [
-                [event.point.x - hitbox, event.point.y - hitbox],
-                [event.point.x + hitbox, event.point.y + hitbox],
-              ],
-              {
-                layers: [PARA_ASSETS_3D_MODEL_LAYER_ID],
-              },
-            )
+          ? queryRenderedFeaturesAroundPoint(event.point, MODEL_CLICK_HITBOX_PX, [
+              PARA_ASSETS_3D_MODEL_LAYER_ID,
+            ])
           : [];
+        const nearestParaAsset = findNearestAssetAtPoint(
+          event.point,
+          MODEL_CLICK_HITBOX_PX,
+          (assetFeature) => assetFeature.properties.municipalityState === 'PA',
+        );
+
+        if (nearestParaAsset) {
+          selectRenderedAsset(nearestParaAsset);
+          return;
+        }
 
         if (modelFeatures.length > 0) {
-          setIsModelCalibrationOpen(true);
-          setIsDetailsExpanded(false);
-          setIsFormExpanded(false);
+          setSidebarMode('model');
+          setSelectedAsset(null);
           clearDrawnCoverageAreaRef.current();
           setSelectedPoint(null);
           upsertSelectedPointLayer(map, null);
@@ -587,26 +738,22 @@ function App() {
           return;
         }
 
-        const features = map.queryRenderedFeatures(
-          [
-            [event.point.x - hitbox, event.point.y - hitbox],
-            [event.point.x + hitbox, event.point.y + hitbox],
-          ],
-          {
-            layers: [METEOROLOGY_ASSETS_LAYER_ID],
-          },
-        );
+        const features = queryRenderedFeaturesAroundPoint(event.point, ASSET_CLICK_HITBOX_PX, [
+          METEOROLOGY_ASSETS_LAYER_ID,
+        ]);
+        const assetFeature =
+          (features[0] ? readAssetFromRenderedFeature(features[0]) : null) ??
+          findNearestAssetAtPoint(event.point, ASSET_CLICK_HITBOX_PX);
 
-        if (features.length > 0) {
+        if (assetFeature) {
+          selectRenderedAsset(assetFeature);
           return;
         }
       }
 
       const coordinates: [number, number] = [event.lngLat.lng, event.lngLat.lat];
       setSelectedAsset(null);
-      setIsDetailsExpanded(false);
-      setIsFormExpanded(true);
-      setIsModelCalibrationOpen(false);
+      setSidebarMode('create');
       clearDrawnCoverageAreaRef.current();
       upsertSelectedCoverageLayer(map, null);
       upsertSelectedAssetLayer(map, null);
@@ -646,6 +793,14 @@ function App() {
 
     upsertAssetLayer(mapRef.current, assetsGeoJson);
   }, [assetsGeoJson, isMapLoaded]);
+
+  useEffect(() => {
+    if (!isMapLoaded || !mapRef.current) {
+      return;
+    }
+
+    upsertSelectedCoverageLayer(mapRef.current, isSelectedCoverageVisible ? selectedAsset : null);
+  }, [isMapLoaded, isSelectedCoverageVisible, selectedAsset]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -835,6 +990,101 @@ function App() {
     };
   }, [filters, hasActiveFilters, isMapLoaded, reloadAssets, totalAssetsCount]);
 
+  const loadCoverageSocioeconomicData = useCallback(async () => {
+    if (!selectedAsset) {
+      return;
+    }
+
+    coverageSocioeconomicAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    coverageSocioeconomicAbortControllerRef.current = abortController;
+    setCoverageSocioeconomicStatus('loading');
+    setCoverageSocioeconomicError(null);
+
+    try {
+      const data = await fetchCoverageSocioeconomicData(
+        abortController.signal,
+        selectedAsset.properties.infrastructurePointId,
+      );
+
+      if (abortController.signal.aborted) {
+        return;
+      }
+
+      setCoverageSocioeconomicData(data);
+      setCoverageSocioeconomicStatus('complete');
+    } catch (error: unknown) {
+      if (isAbortError(error)) {
+        return;
+      }
+
+      if (error instanceof ApiError && error.status === 404) {
+        try {
+          const geoJson = await reloadAssets(abortController.signal, filters);
+
+          if (abortController.signal.aborted) {
+            return;
+          }
+
+          const reloadedAsset = findReloadedAsset(selectedAsset, geoJson.features);
+
+          if (!reloadedAsset) {
+            setCoverageSocioeconomicStatus('failed');
+            setCoverageSocioeconomicError(
+              'O ativo selecionado nao existe mais na base atual. Selecione o ativo novamente.',
+            );
+            return;
+          }
+
+          const retryData = await fetchCoverageSocioeconomicData(
+            abortController.signal,
+            reloadedAsset.properties.infrastructurePointId,
+          );
+
+          if (abortController.signal.aborted) {
+            return;
+          }
+
+          coverageSocioeconomicSelectionRefreshRef.current =
+            reloadedAsset.properties.infrastructurePointId;
+          setSelectedAsset(reloadedAsset);
+          setCoverageSocioeconomicData(retryData);
+          setCoverageSocioeconomicStatus('complete');
+          setCoverageSocioeconomicError(null);
+
+          if (mapRef.current) {
+            upsertSelectedCoverageLayer(
+              mapRef.current,
+              selectedCoverageVisibleRef.current ? reloadedAsset : null,
+            );
+            upsertSelectedAssetLayer(mapRef.current, reloadedAsset);
+          }
+
+          return;
+        } catch (retryError: unknown) {
+          if (isAbortError(retryError)) {
+            return;
+          }
+
+          const retryErrorMessage = getApiErrorMessage(retryError);
+          console.error('Failed to reload coverage socioeconomic data', retryError);
+          setCoverageSocioeconomicStatus('failed');
+          setCoverageSocioeconomicError(retryErrorMessage);
+          return;
+        }
+      }
+
+      const errorMessage = getApiErrorMessage(error);
+      console.error('Failed to load coverage socioeconomic data', error);
+      setCoverageSocioeconomicStatus('failed');
+      setCoverageSocioeconomicError(errorMessage);
+    } finally {
+      if (coverageSocioeconomicAbortControllerRef.current === abortController) {
+        coverageSocioeconomicAbortControllerRef.current = null;
+      }
+    }
+  }, [filters, reloadAssets, selectedAsset]);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -881,6 +1131,7 @@ function App() {
       }));
       setSelectedPoint(null);
       clearDrawnCoverageArea();
+      setSidebarMode('assets');
       setFormStatus('Ativo salvo. A camada foi atualizada.');
 
       if (mapRef.current) {
@@ -927,62 +1178,74 @@ function App() {
     });
   };
 
+  const selectAssetFromSidebar = useCallback((assetFeature: MeteorologyAssetPointFeature) => {
+    const map = mapRef.current;
+
+    setSelectedAsset(assetFeature);
+    setSidebarMode(assetFeature.properties.municipalityState === 'PA' ? 'model' : 'details');
+    clearDrawnCoverageAreaRef.current();
+    setSelectedPoint(null);
+
+    if (!map) {
+      return;
+    }
+
+    upsertSelectedPointLayer(map, null);
+    upsertSelectedCoverageLayer(map, selectedCoverageVisibleRef.current ? assetFeature : null);
+    upsertSelectedAssetLayer(map, assetFeature);
+    map.easeTo({
+      center: assetFeature.geometry.coordinates,
+      zoom: Math.max(map.getZoom(), 15),
+      pitch: 60,
+      duration: 700,
+    });
+  }, []);
+
+  const resetModelCalibration = useCallback(() => {
+    setModelCalibration(initialModelCalibration);
+  }, []);
+
   return (
     <>
       <MapCanvas containerRef={mapContainerRef} />
 
       {!tokenMissing && (
-        <AssetFiltersPanel
+        <OperationalSidebar
+          assets={assetsGeoJson.features}
+          coverageArea={drawnCoverageArea}
+          coverageSocioeconomicData={coverageSocioeconomicData}
+          coverageSocioeconomicError={coverageSocioeconomicError}
+          coverageSocioeconomicStatus={coverageSocioeconomicStatus}
           filters={filters}
-          municipalities={municipalities}
-          totalCount={totalAssetsCount || assetsGeoJson.features.length}
-          visibleCount={assetsGeoJson.features.length}
-          onChange={setFilters}
-          onClear={() => setFilters(initialAssetFilters)}
-        />
-      )}
-
-      {!tokenMissing && (
-        <MapActions
-          selectedAsset={selectedAsset}
-          isDetailsExpanded={isDetailsExpanded}
-          onToggleForm={toggleCreatePanel}
-          onOpenDetails={() => setIsDetailsExpanded(true)}
-        />
-      )}
-
-      {!tokenMissing && isModelCalibrationOpen && (
-        <ModelCalibrationPanel
-          calibration={modelCalibration}
-          onClose={() => setIsModelCalibrationOpen(false)}
-          onChange={setModelCalibration}
-        />
-      )}
-
-      {!tokenMissing && selectedAsset && isDetailsExpanded && (
-        <AssetDetailsPanel
-          asset={selectedAsset}
-          modelPerformance={modelPerformance}
-          onClose={() => setIsDetailsExpanded(false)}
-          onFocusCoverage={focusSelectedAssetCoverage}
-        />
-      )}
-
-      {!tokenMissing && isFormExpanded && (
-        <AssetCreatePanel
           form={form}
           formStatus={formStatus}
-          coverageArea={drawnCoverageArea}
           isDrawingCoverage={isDrawingCoverage}
+          isSelectedCoverageVisible={isSelectedCoverageVisible}
           isSubmitting={isSubmitting}
+          mode={sidebarMode}
+          modelCalibration={modelCalibration}
+          modelPerformance={modelPerformance}
           municipalities={municipalities}
+          selectedAsset={selectedAsset}
           selectedPoint={selectedPoint}
+          totalCount={totalAssetsCount || assetsGeoJson.features.length}
+          visibleCount={assetsGeoJson.features.length}
+          onChangeFilters={setFilters}
+          onChangeMode={setSidebarMode}
           onClearCoverage={clearDrawnCoverageArea}
-          onClose={closeCreatePanel}
+          onClearFilters={() => setFilters(initialAssetFilters)}
+          onFocusCoverage={focusSelectedAssetCoverage}
           onFinishCoverageDraw={finishCoverageDraw}
+          onLoadCoverageSocioeconomicData={loadCoverageSocioeconomicData}
+          onResetCreateDraft={resetCreateDraft}
+          onResetModelCalibration={resetModelCalibration}
+          onSelectAsset={selectAssetFromSidebar}
           onStartCoverageDraw={startCoverageDraw}
+          onStartCreate={startCreateWorkflow}
           onSubmit={handleSubmit}
+          onToggleSelectedCoverage={setSelectedCoverageVisibility}
           setForm={setForm}
+          setModelCalibration={setModelCalibration}
         />
       )}
 

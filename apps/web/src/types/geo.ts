@@ -76,6 +76,22 @@ export type CreateMeteorologyAssetRequest = {
   status: MeteorologyAssetStatus;
 };
 
+export type CoverageSocioeconomicArea = {
+  id: number;
+  name: string;
+  state: string | null;
+  population: number;
+  averageMonthlyIncome: number;
+};
+
+export type CoverageSocioeconomicData = {
+  infrastructurePointId: number;
+  externalAreasCount: number;
+  totalPopulation: number;
+  averageMonthlyIncome: number;
+  areas: CoverageSocioeconomicArea[];
+};
+
 export type ReverseGeocodedLocation = {
   municipalityName: string | null;
   stateName: string | null;

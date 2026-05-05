@@ -1,5 +1,6 @@
 import type {
   AssetFilters,
+  CoverageSocioeconomicData,
   CreateMeteorologyAssetRequest,
   MeteorologyAssetsGeoJsonResponse,
   MeteorologyAssetsPointCollection,
@@ -8,7 +9,33 @@ import type {
 } from '../types/geo';
 import { isPointFeature, parseCoverageArea } from './geo';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000';
+
+export class ApiError extends Error {
+  readonly body: string | null;
+  readonly status: number;
+  readonly url: string;
+
+  constructor(response: Response, body: string | null) {
+    super(`API returned ${response.status}`);
+    this.name = 'ApiError';
+    this.body = body;
+    this.status = response.status;
+    this.url = response.url;
+  }
+}
+
+async function throwApiError(response: Response): Promise<never> {
+  let body: string | null = null;
+
+  try {
+    body = await response.text();
+  } catch {
+    body = null;
+  }
+
+  throw new ApiError(response, body);
+}
 
 type MapboxGeocodingFeatureContextItem = {
   name?: string;
@@ -52,7 +79,7 @@ export async function fetchMeteorologyAssets(
   });
 
   if (!response.ok) {
-    throw new Error(`API returned ${response.status}`);
+    await throwApiError(response);
   }
 
   const data = (await response.json()) as MeteorologyAssetsGeoJsonResponse;
@@ -75,10 +102,28 @@ export async function fetchMunicipalities(signal: AbortSignal): Promise<Municipa
   });
 
   if (!response.ok) {
-    throw new Error(`API returned ${response.status}`);
+    await throwApiError(response);
   }
 
   return (await response.json()) as Municipality[];
+}
+
+export async function fetchCoverageSocioeconomicData(
+  signal: AbortSignal,
+  infrastructurePointId: number,
+): Promise<CoverageSocioeconomicData> {
+  const response = await fetch(
+    `${API_BASE_URL}/geo/meteorology-assets/infrastructure-points/${infrastructurePointId}/coverage-socioeconomic-data`,
+    {
+      signal,
+    },
+  );
+
+  if (!response.ok) {
+    await throwApiError(response);
+  }
+
+  return (await response.json()) as CoverageSocioeconomicData;
 }
 
 export async function reverseGeocodeLocation(
@@ -143,6 +188,6 @@ export async function createMeteorologyAsset(
   });
 
   if (!response.ok) {
-    throw new Error(`API returned ${response.status}`);
+    await throwApiError(response);
   }
 }

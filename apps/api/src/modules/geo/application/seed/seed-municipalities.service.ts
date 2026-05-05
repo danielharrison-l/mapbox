@@ -35,8 +35,45 @@ type SocioeconomicAreaSeed = {
   coordinates: [number, number];
 };
 
+type SocioeconomicAreaProfile = {
+  name: string;
+  lngOffset: number;
+  latOffset: number;
+  populationFactor: number;
+  incomeFactor: number;
+};
+
 const TARGET_METEOROLOGY_ASSETS_COUNT = 90;
-const SOCIOECONOMIC_AREAS_PER_METEOROLOGY_ASSET = 3;
+const SOCIOECONOMIC_AREA_PROFILES: SocioeconomicAreaProfile[] = [
+  {
+    name: 'Setor Norte',
+    lngOffset: 0,
+    latOffset: 0,
+    populationFactor: 1,
+    incomeFactor: 0.92,
+  },
+  {
+    name: 'Centro Expandido',
+    lngOffset: 0.036,
+    latOffset: 0.019,
+    populationFactor: 1.28,
+    incomeFactor: 1.18,
+  },
+  {
+    name: 'Zona Industrial',
+    lngOffset: -0.034,
+    latOffset: -0.024,
+    populationFactor: 0.74,
+    incomeFactor: 1.04,
+  },
+  {
+    name: 'Vila Olimpica',
+    lngOffset: 0.018,
+    latOffset: -0.041,
+    populationFactor: 0.86,
+    incomeFactor: 0.78,
+  },
+];
 
 const MUNICIPALITY_SEED_DATA: MunicipalitySeed[] = [
   { name: 'Rio Branco', state: 'AC', population: 364756, coordinates: [-67.8243, -9.974] },
@@ -92,10 +129,14 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
       assertBrazilianState(municipalitySeed.state);
     }
 
-    await this.meteorologyAssetRepository.createQueryBuilder().delete().execute();
-    await this.infrastructurePointRepository.createQueryBuilder().delete().execute();
-    await this.municipalityRepository.createQueryBuilder().delete().execute();
-    await this.socioeconomicAreaRepository.createQueryBuilder().delete().execute();
+    await this.meteorologyAssetRepository.query(`
+      TRUNCATE TABLE
+        meteorology_asset,
+        infrastructure_point,
+        municipality,
+        socioeconomic_area
+      RESTART IDENTITY CASCADE
+    `);
 
     const municipalities = await this.municipalityRepository.save(
       MUNICIPALITY_SEED_DATA.map((seed) => this.municipalityRepository.create(seed)),
@@ -105,10 +146,7 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
     for (let assetNumber = 1; assetNumber <= TARGET_METEOROLOGY_ASSETS_COUNT; assetNumber += 1) {
       const municipalityIndex = (assetNumber - 1) % municipalities.length;
       const municipalitySeed = MUNICIPALITY_SEED_DATA[municipalityIndex];
-      const coordinates = this.createAssetCoordinates(
-        municipalitySeed.coordinates,
-        assetNumber,
-      );
+      const coordinates = this.createAssetCoordinates(municipalitySeed.coordinates, assetNumber);
       const infrastructurePoint = await this.infrastructurePointRepository.save(
         this.infrastructurePointRepository.create({
           name: `Estacao Meteorologica ${String(assetNumber).padStart(2, '0')}`,
@@ -196,21 +234,21 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
     [lng, lat]: [number, number],
     assetNumber: number,
   ): SocioeconomicAreaSeed[] {
-    const offsets: Array<[number, number]> = [
-      [0, 0],
-      [0.035, 0.018],
-      [-0.032, -0.021],
-    ];
+    const populationScale = Math.min(3.25, Math.max(0.7, municipalitySeed.population / 900_000));
+    const basePopulation = 420 + ((assetNumber * 149) % 980);
+    const baseIncome = 1450 + ((assetNumber * 211) % 4200);
 
-    return offsets.slice(0, SOCIOECONOMIC_AREAS_PER_METEOROLOGY_ASSET).map(
-      ([lngOffset, latOffset], index): SocioeconomicAreaSeed => ({
-        name: `Setor Socioeconomico ${String(assetNumber).padStart(2, '0')}-${index + 1}`,
+    return SOCIOECONOMIC_AREA_PROFILES.map(
+      (profile, index): SocioeconomicAreaSeed => ({
+        name: `${profile.name} ${String(assetNumber).padStart(2, '0')}`,
         state: municipalitySeed.state,
-        population: 350 + ((assetNumber * 137 + index * 211) % 1450),
-        averageMonthlyIncome: 1200 + ((assetNumber * 173 + index * 397) % 5200),
+        population: Math.round(
+          (basePopulation + index * 175) * populationScale * profile.populationFactor,
+        ),
+        averageMonthlyIncome: Math.round((baseIncome + index * 260) * profile.incomeFactor),
         coordinates: [
-          Number((lng + lngOffset).toFixed(6)),
-          Number((lat + latOffset).toFixed(6)),
+          Number((lng + profile.lngOffset).toFixed(6)),
+          Number((lat + profile.latOffset).toFixed(6)),
         ],
       }),
     );
