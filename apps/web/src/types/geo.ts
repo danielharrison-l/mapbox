@@ -75,3 +75,33 @@ export type CreateMeteorologyAssetRequest = {
   coverageArea: PolygonGeometry;
   status: MeteorologyAssetStatus;
 };
+
+export type ReverseGeocodedLocation = {
+  municipalityName: string | null;
+  stateName: string | null;
+  stateCode: string | null;
+};
+
+export type ModelPerformanceStatus = 'idle' | 'measuring' | 'complete' | 'failed';
+
+export type ModelPerformance = {
+  status: ModelPerformanceStatus;
+  assetId: number | null;
+  modelUrl: string;
+  durationMs: number | null;
+  frames: number | null;
+  averageFps: number | null;
+  maxFrameTimeMs: number | null;
+  measuredAt: string | null;
+  errorMessage: string | null;
+};
+
+export type ModelCalibration = {
+  offsetEastMeters: number;
+  offsetNorthMeters: number;
+  scaleX: number;
+  scaleY: number;
+  scaleZ: number;
+  rotationZ: number;
+  clipRadiusMeters: number;
+};

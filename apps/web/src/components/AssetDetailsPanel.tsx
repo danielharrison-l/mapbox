@@ -1,5 +1,5 @@
 import { getStatusLabel, getStatusPillClassName } from '../lib/geo';
-import type { MeteorologyAssetPointFeature } from '../types/geo';
+import type { MeteorologyAssetPointFeature, ModelPerformance } from '../types/geo';
 import {
   coordinateCardClassName,
   coordinateRowClassName,
@@ -21,11 +21,33 @@ import {
 
 type AssetDetailsPanelProps = {
   asset: MeteorologyAssetPointFeature;
+  modelPerformance: ModelPerformance;
   onClose: () => void;
   onFocusCoverage: () => void;
 };
 
-export function AssetDetailsPanel({ asset, onClose, onFocusCoverage }: AssetDetailsPanelProps) {
+function getModelPerformanceLabel(modelPerformance: ModelPerformance) {
+  if (modelPerformance.status === 'measuring') {
+    return 'Medindo renderizacao';
+  }
+
+  if (modelPerformance.status === 'complete') {
+    return `${modelPerformance.averageFps?.toFixed(1) ?? '-'} FPS`;
+  }
+
+  if (modelPerformance.status === 'failed') {
+    return 'Falha no modelo';
+  }
+
+  return 'Aguardando selecao';
+}
+
+export function AssetDetailsPanel({
+  asset,
+  modelPerformance,
+  onClose,
+  onFocusCoverage,
+}: AssetDetailsPanelProps) {
   return (
     <aside className={panelClassName} aria-label="Detalhes do ativo selecionado">
       <header className={panelHeaderClassName}>
@@ -118,6 +140,54 @@ export function AssetDetailsPanel({ asset, onClose, onFocusCoverage }: AssetDeta
               </strong>
             </div>
           </div>
+        </section>
+
+        <section>
+          <h4 className={sectionTitleClassName}>Modelo 3D</h4>
+          <div className={summaryGridClassName}>
+            <div className="grid min-h-[70px] gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+              <span className="text-[11px] font-extrabold text-indigo-700 uppercase tracking-[0.04em]">
+                Status
+              </span>
+              <strong className={summaryValueClassName}>
+                {getModelPerformanceLabel(modelPerformance)}
+              </strong>
+            </div>
+            <div className="grid min-h-[70px] gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+              <span className="text-[11px] font-extrabold text-indigo-700 uppercase tracking-[0.04em]">
+                Janela
+              </span>
+              <strong className={summaryValueClassName}>
+                {modelPerformance.durationMs
+                  ? `${(modelPerformance.durationMs / 1000).toFixed(1)}s`
+                  : '5.0s'}
+              </strong>
+            </div>
+            <div className="grid min-h-[70px] gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+              <span className="text-[11px] font-extrabold text-indigo-700 uppercase tracking-[0.04em]">
+                Frames
+              </span>
+              <strong className={summaryValueClassName}>{modelPerformance.frames ?? '-'}</strong>
+            </div>
+            <div className="grid min-h-[70px] gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+              <span className="text-[11px] font-extrabold text-indigo-700 uppercase tracking-[0.04em]">
+                Pior frame
+              </span>
+              <strong className={summaryValueClassName}>
+                {modelPerformance.maxFrameTimeMs
+                  ? `${modelPerformance.maxFrameTimeMs.toFixed(1)}ms`
+                  : '-'}
+              </strong>
+            </div>
+          </div>
+          {modelPerformance.status === 'failed' && (
+            <p className="mt-3 mb-0 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+              {modelPerformance.errorMessage ?? 'Nao foi possivel carregar o arquivo GLB.'}
+            </p>
+          )}
+          <p className="mt-3 mb-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs font-semibold text-slate-500">
+            {modelPerformance.modelUrl}
+          </p>
         </section>
 
         <section>

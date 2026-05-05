@@ -1,5 +1,10 @@
 import type { Dispatch, FormEvent, SetStateAction } from 'react';
-import type { AssetFormState, MeteorologyAssetStatus, Municipality } from '../types/geo';
+import type {
+  AssetFormState,
+  MeteorologyAssetStatus,
+  Municipality,
+  PolygonGeometry,
+} from '../types/geo';
 import {
   coordinateCardClassName,
   coordinateRowClassName,
@@ -23,10 +28,15 @@ import {
 type AssetCreatePanelProps = {
   form: AssetFormState;
   formStatus: string;
+  coverageArea: PolygonGeometry | null;
+  isDrawingCoverage: boolean;
   isSubmitting: boolean;
   municipalities: Municipality[];
   selectedPoint: [number, number] | null;
   onClose: () => void;
+  onClearCoverage: () => void;
+  onFinishCoverageDraw: () => void;
+  onStartCoverageDraw: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   setForm: Dispatch<SetStateAction<AssetFormState>>;
 };
@@ -34,13 +44,20 @@ type AssetCreatePanelProps = {
 export function AssetCreatePanel({
   form,
   formStatus,
+  coverageArea,
+  isDrawingCoverage,
   isSubmitting,
   municipalities,
   selectedPoint,
   onClose,
+  onClearCoverage,
+  onFinishCoverageDraw,
+  onStartCoverageDraw,
   onSubmit,
   setForm,
 }: AssetCreatePanelProps) {
+  const coverageVerticesCount = coverageArea?.coordinates[0]?.length ?? 0;
+
   return (
     <aside className={`${panelClassName} z-[31]`} aria-label="Cadastro de ativo meteorologico">
       <header className={panelHeaderClassName}>
@@ -104,6 +121,7 @@ export function AssetCreatePanel({
                     }))
                   }
                 >
+                  <option value="">Selecione</option>
                   {municipalities.map((municipality) => (
                     <option key={municipality.id} value={municipality.id}>
                       {municipality.state ? `${municipality.state} - ` : ''}
@@ -133,6 +151,37 @@ export function AssetCreatePanel({
           </section>
 
           <section>
+            <h4 className={sectionTitleClassName}>Area de cobertura</h4>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                className="min-h-9 cursor-pointer rounded-md border border-blue-200 bg-blue-50 px-3 font-bold text-blue-800 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                type="button"
+                disabled={!selectedPoint || Boolean(coverageArea)}
+                onClick={onStartCoverageDraw}
+              >
+                {isDrawingCoverage ? 'Desenhando' : 'Desenhar area'}
+              </button>
+              <button
+                className="min-h-9 cursor-pointer rounded-md border border-green-200 bg-green-50 px-3 font-bold text-green-800 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                type="button"
+                disabled={!isDrawingCoverage}
+                onClick={onFinishCoverageDraw}
+              >
+                Concluir area
+              </button>
+              <button
+                className="min-h-9 cursor-pointer rounded-md border border-slate-300 bg-white px-3 font-bold text-slate-700 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                type="button"
+                disabled={!coverageArea && !isDrawingCoverage}
+                onClick={onClearCoverage}
+              >
+                Limpar area
+              </button>
+            </div>
+            <p className="mt-3 text-[13px] text-slate-600">{formStatus}</p>
+          </section>
+
+          <section>
             <h4 className={sectionTitleClassName}>Localizacao</h4>
             <div className={coordinateCardClassName}>
               <div className={coordinateRowClassName}>
@@ -149,10 +198,11 @@ export function AssetCreatePanel({
               </div>
               <div className={coordinateRowClassName}>
                 <span className={labelTextClassName}>Cobertura</span>
-                <strong className={coordinateValueClassName}>Poligono irregular automatico</strong>
+                <strong className={coordinateValueClassName}>
+                  {coverageArea ? `${coverageVerticesCount} vertices` : 'Nao desenhada'}
+                </strong>
               </div>
             </div>
-            <p className="mt-3 text-[13px] text-slate-600">{formStatus}</p>
           </section>
         </div>
 

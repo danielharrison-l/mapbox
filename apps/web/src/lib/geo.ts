@@ -5,6 +5,7 @@ import type {
   MeteorologyAssetStatus,
   Municipality,
   PolygonGeometry,
+  ReverseGeocodedLocation,
 } from '../types/geo';
 
 export function isPointFeature(
@@ -86,6 +87,74 @@ export function createCoverageArea([lng, lat]: [number, number]): PolygonGeometr
   };
 }
 
+type ReadPolygonOptions = {
+  discardActiveDrawVertex?: boolean;
+};
+
+export function readFirstPolygonGeometry(
+  value: unknown,
+  options: ReadPolygonOptions = {},
+): PolygonGeometry | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const featureCollection = value as {
+    features?: Array<{
+      geometry?: unknown;
+    }>;
+  };
+
+  const polygonFeature = featureCollection.features?.find((feature) =>
+    isPolygonGeometry(feature.geometry),
+  );
+
+  return polygonFeature?.geometry && isPolygonGeometry(polygonFeature.geometry)
+    ? closePolygonGeometry(polygonFeature.geometry, options)
+    : null;
+}
+
+function closePolygonGeometry(
+  polygon: PolygonGeometry,
+  options: ReadPolygonOptions = {},
+): PolygonGeometry {
+  return {
+    ...polygon,
+    coordinates: polygon.coordinates.map((ring) => {
+      const normalizedRing =
+        options.discardActiveDrawVertex && ring.length > 4 ? discardActiveDrawVertex(ring) : ring;
+      const firstPosition = normalizedRing[0];
+      const lastPosition = normalizedRing.at(-1);
+
+      if (!firstPosition || !lastPosition) {
+        return normalizedRing;
+      }
+
+      if (firstPosition[0] === lastPosition[0] && firstPosition[1] === lastPosition[1]) {
+        return normalizedRing;
+      }
+
+      return [...normalizedRing, firstPosition];
+    }) as PolygonGeometry['coordinates'],
+  };
+}
+
+function discardActiveDrawVertex(ring: Array<[number, number]>): Array<[number, number]> {
+  const firstPosition = ring[0];
+  const lastPosition = ring.at(-1);
+
+  if (
+    firstPosition &&
+    lastPosition &&
+    firstPosition[0] === lastPosition[0] &&
+    firstPosition[1] === lastPosition[1]
+  ) {
+    return [...ring.slice(0, -2), firstPosition];
+  }
+
+  return ring.slice(0, -1);
+}
+
 export function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
@@ -112,6 +181,58 @@ export function getStateOptions(municipalities: Municipality[]): string[] {
         .filter((state): state is string => Boolean(state)),
     ),
   ).sort((firstState, secondState) => firstState.localeCompare(secondState));
+}
+
+export function findMunicipalityFromGeocoding(
+  location: ReverseGeocodedLocation,
+  municipalities: Municipality[],
+): Municipality | null {
+  if (!location.municipalityName) {
+    return null;
+  }
+
+  const normalizedName = normalizeText(location.municipalityName);
+  const normalizedState = normalizeStateCode(location.stateCode);
+
+  return (
+    municipalities.find((municipality) => {
+      const matchesName = normalizeText(municipality.name) === normalizedName;
+      const matchesState = !normalizedState || municipality.state === normalizedState;
+
+      return matchesName && matchesState;
+    }) ?? null
+  );
+}
+
+export function formatGeocodedLocation(location: ReverseGeocodedLocation): string {
+  if (location.stateCode && location.municipalityName) {
+    return `${location.stateCode} - ${location.municipalityName}`;
+  }
+
+  return location.stateCode ?? location.stateName ?? location.municipalityName ?? 'local informado';
+}
+
+function normalizeStateCode(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalizedValue = value.trim().toUpperCase();
+
+  if (/^[A-Z]{2}$/.test(normalizedValue)) {
+    return normalizedValue;
+  }
+
+  const stateMatch = normalizedValue.match(/BR-([A-Z]{2})$/);
+  return stateMatch?.[1] ?? null;
+}
+
+function normalizeText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .trim()
+    .toLowerCase();
 }
 
 export function assetMatchesFilters(
