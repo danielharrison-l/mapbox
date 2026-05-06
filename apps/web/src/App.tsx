@@ -9,9 +9,12 @@ import {
   ApiError,
   createMeteorologyAsset,
   fetchCoverageSocioeconomicData,
+  fetchIsochrone,
   fetchMeteorologyAssets,
   fetchMunicipalities,
   reverseGeocodeLocation,
+  searchLocation,
+  updateMeteorologyAssetCoverage,
 } from './lib/api';
 import {
   assetMatchesFilters,
@@ -22,28 +25,36 @@ import {
 } from './lib/geo';
 import {
   BRAZIL_BOUNDS,
+  configureUrbanBuildingStyle,
+  enableTerrain,
   getPolygonBounds,
+  hasUrbanBuildingAtPoint,
+  installUrbanBuildingInteractions,
   METEOROLOGY_ASSETS_LAYER_ID,
   readAssetFeature,
+  type UrbanBuildingInteractionsController,
   upsertAssetLayer,
   upsertCoverageSocioeconomicLayer,
+  upsertIsochroneLayer,
   upsertSelectedAssetLayer,
   upsertSelectedCoverageLayer,
   upsertSelectedPointLayer,
 } from './lib/mapbox';
 import {
+  isStateModelAsset,
   measureMapFrameRate,
-  PARA_ASSETS_3D_MODEL_LAYER_ID,
-  removeParaAsset3dModels,
   removeSelectedAsset3dModel,
-  upsertParaAsset3dModels,
+  removeStateAsset3dModels,
+  STATE_ASSETS_3D_MODEL_LAYER_ID,
   upsertSelectedAsset3dModel,
+  upsertStateAsset3dModels,
 } from './lib/mapbox-3d';
 import type {
   AssetFilters,
   AssetFormState,
   CoverageSocioeconomicData,
   CreateMeteorologyAssetRequest,
+  IsochroneFeatureCollection,
   MeteorologyAssetPointFeature,
   MeteorologyAssetsPointCollection,
   ModelCalibration,
@@ -110,7 +121,7 @@ function isFetchNetworkError(error: unknown): boolean {
 
 function getApiErrorMessage(error: unknown): string {
   if (isFetchNetworkError(error)) {
-    return `Nao foi possivel conectar ao backend em ${API_BASE_URL}. Verifique se a API esta rodando.`;
+    return `Não foi possível conectar ao backend em ${API_BASE_URL}. Verifique se a API está rodando.`;
   }
 
   return getErrorMessage(error);
@@ -171,10 +182,15 @@ function App() {
   const ignoreNextMapClickRef = useRef(false);
   const isDrawingCoverageRef = useRef(false);
   const suppressNextDrawDeleteRef = useRef(false);
+  const urbanBuildingClickRef = useRef(false);
+  const urbanBuildingInteractionsRef = useRef<UrbanBuildingInteractionsController | null>(null);
   const clearDrawnCoverageAreaRef = useRef<() => void>(() => undefined);
   const coverageSocioeconomicAbortControllerRef = useRef<AbortController | null>(null);
   const coverageSocioeconomicSelectionRefreshRef = useRef<number | null>(null);
+  const isochroneAbortControllerRef = useRef<AbortController | null>(null);
+  const locationSearchAbortControllerRef = useRef<AbortController | null>(null);
   const selectedCoverageVisibleRef = useRef(true);
+  const selectedAssetRef = useRef<MeteorologyAssetPointFeature | null>(null);
   const finalizeCoverageAreaRef = useRef<(nextCoverageArea: PolygonGeometry) => void>(
     () => undefined,
   );
@@ -182,7 +198,7 @@ function App() {
     () => undefined,
   );
   const assetsByInfrastructurePointIdRef = useRef(new Map<number, MeteorologyAssetPointFeature>());
-  const hasFocusedParaModelsRef = useRef(false);
+  const hasFocusedStateModelsRef = useRef(false);
   const municipalitiesRef = useRef<Municipality[]>([]);
   const modelMeasurementSequenceRef = useRef(0);
   const sidebarModeRef = useRef<OperationalSidebarMode>('assets');
@@ -203,9 +219,24 @@ function App() {
     'idle' | 'loading' | 'complete' | 'failed'
   >('idle');
   const [coverageSocioeconomicError, setCoverageSocioeconomicError] = useState<string | null>(null);
+  const [isochroneData, setIsochroneData] = useState<IsochroneFeatureCollection | null>(null);
+  const [isochroneStatus, setIsochroneStatus] = useState<
+    'idle' | 'loading' | 'complete' | 'failed'
+  >('idle');
+  const [isochroneError, setIsochroneError] = useState<string | null>(null);
   const [isSelectedCoverageVisible, setIsSelectedCoverageVisible] = useState(true);
   const [sidebarMode, setSidebarMode] = useState<OperationalSidebarMode>('assets');
   const [isDrawingCoverage, setIsDrawingCoverage] = useState(false);
+  const [isEditingExistingCoverage, setIsEditingExistingCoverage] = useState(false);
+  const [isSavingCoverageEdit, setIsSavingCoverageEdit] = useState(false);
+  const [selectedAssetElevationMeters, setSelectedAssetElevationMeters] = useState<number | null>(
+    null,
+  );
+  const [locationSearchQuery, setLocationSearchQuery] = useState('');
+  const [locationSearchStatus, setLocationSearchStatus] = useState<
+    'idle' | 'loading' | 'complete' | 'failed'
+  >('idle');
+  const [locationSearchMessage, setLocationSearchMessage] = useState<string | null>(null);
   const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [modelCalibration, setModelCalibration] =
     useState<ModelCalibration>(initialModelCalibration);
@@ -230,6 +261,11 @@ function App() {
   );
   const selectedAssetInfrastructurePointId =
     selectedAsset?.properties.infrastructurePointId ?? null;
+
+  useEffect(() => {
+    selectedAssetRef.current = selectedAsset;
+    urbanBuildingInteractionsRef.current?.clear();
+  }, [selectedAsset]);
 
   const clearSelectedAsset = useCallback(() => {
     coverageSocioeconomicAbortControllerRef.current?.abort();
@@ -272,6 +308,7 @@ function App() {
 
     isDrawingCoverageRef.current = false;
     setIsDrawingCoverage(false);
+    setIsEditingExistingCoverage(false);
     setDrawnCoverageArea(null);
 
     if (mapRef.current) {
@@ -281,14 +318,14 @@ function App() {
 
   const startCoverageDraw = useCallback(() => {
     if (!selectedPoint) {
-      setFormStatus('Selecione o ponto do ativo antes de desenhar a area.');
+      setFormStatus('Selecione o ponto do ativo antes de desenhar a área.');
       return;
     }
 
     const draw = drawRef.current;
 
     if (!draw) {
-      setFormStatus('O desenho de area ainda nao esta disponivel no mapa.');
+      setFormStatus('O desenho de área ainda não está disponível no mapa.');
       return;
     }
 
@@ -297,8 +334,31 @@ function App() {
     isDrawingCoverageRef.current = true;
     setIsDrawingCoverage(true);
     setSidebarMode('coverage');
-    setFormStatus('Marque a area. Clique no primeiro ponto ou em Concluir area para finalizar.');
+    setFormStatus('Marque a área. Clique no primeiro ponto ou em Concluir área para finalizar.');
   }, [clearDrawnCoverageArea, selectedPoint]);
+
+  const startSelectedCoverageEdit = useCallback(() => {
+    if (!selectedAsset) {
+      setFormStatus('Selecione um ativo para redesenhar a cobertura.');
+      return;
+    }
+
+    const draw = drawRef.current;
+
+    if (!draw) {
+      setFormStatus('O desenho de área ainda não está disponível no mapa.');
+      return;
+    }
+
+    clearDrawnCoverageArea();
+    setSelectedPoint(null);
+    setIsEditingExistingCoverage(true);
+    setSidebarMode('coverage');
+    draw.changeMode('draw_polygon');
+    isDrawingCoverageRef.current = true;
+    setIsDrawingCoverage(true);
+    setFormStatus('Redesenhe a cobertura do ativo selecionado e salve a alteração.');
+  }, [clearDrawnCoverageArea, selectedAsset]);
 
   const finalizeCoverageArea = useCallback(
     (nextCoverageArea: PolygonGeometry) => {
@@ -313,30 +373,42 @@ function App() {
       isDrawingCoverageRef.current = false;
       setIsDrawingCoverage(false);
       setDrawnCoverageArea(nextCoverageArea);
-      setFormStatus('Area desenhada. Preencha os dados e salve o ativo.');
+      setFormStatus('Área desenhada. Preencha os dados e salve o ativo.');
 
-      if (mapRef.current && selectedPoint) {
-        upsertSelectedCoverageLayer(mapRef.current, {
-          type: 'Feature',
-          geometry: {
-            type: 'Point',
-            coordinates: selectedPoint,
-          },
-          properties: {
-            id: 0,
-            infrastructurePointId: 0,
-            name: form.name.trim() || 'Area desenhada',
-            description: form.description.trim() || null,
-            municipalityId: Number(form.municipalityId || 0),
-            municipalityName: null,
-            municipalityState: null,
-            status: form.status,
-            coverageArea: nextCoverageArea,
-          },
-        });
+      const draftPoint = selectedPoint ?? selectedAsset?.geometry.coordinates ?? null;
+
+      if (mapRef.current && draftPoint) {
+        const draftCoverageFeature: MeteorologyAssetPointFeature = selectedAsset
+          ? {
+              ...selectedAsset,
+              properties: {
+                ...selectedAsset.properties,
+                coverageArea: nextCoverageArea,
+              },
+            }
+          : {
+              type: 'Feature',
+              geometry: {
+                type: 'Point',
+                coordinates: draftPoint,
+              },
+              properties: {
+                id: 0,
+                infrastructurePointId: 0,
+                name: form.name.trim() || 'Área desenhada',
+                description: form.description.trim() || null,
+                municipalityId: Number(form.municipalityId || 0),
+                municipalityName: null,
+                municipalityState: null,
+                status: form.status,
+                coverageArea: nextCoverageArea,
+              },
+            };
+
+        upsertSelectedCoverageLayer(mapRef.current, draftCoverageFeature);
       }
     },
-    [form.description, form.municipalityId, form.name, form.status, selectedPoint],
+    [form.description, form.municipalityId, form.name, form.status, selectedAsset, selectedPoint],
   );
 
   const finishCoverageDraw = useCallback(() => {
@@ -356,13 +428,14 @@ function App() {
         return;
       }
 
-      setFormStatus('Marque pelo menos tres pontos para concluir a area.');
+      setFormStatus('Marque pelo menos três pontos para concluir a área.');
     }, 0);
   }, [finalizeCoverageArea]);
 
   const resetCreateDraft = useCallback(() => {
     clearDrawnCoverageArea();
     setSelectedPoint(null);
+    setIsEditingExistingCoverage(false);
     setSidebarMode('assets');
     setForm(() => ({
       ...initialFormState,
@@ -377,10 +450,11 @@ function App() {
 
   const startCreateWorkflow = useCallback(() => {
     setSelectedAsset(null);
+    setIsEditingExistingCoverage(false);
     setSidebarMode('create');
     setFormStatus(
       selectedPoint
-        ? 'Ponto selecionado. Desenhe a area de cobertura.'
+        ? 'Ponto selecionado. Desenhe a área de cobertura.'
         : 'Clique no mapa para escolher o ponto.',
     );
 
@@ -399,7 +473,7 @@ function App() {
           ...currentForm,
           municipalityId: '',
         }));
-        setFormStatus('Ponto selecionado. Selecione o municipio e desenhe a area de cobertura.');
+        setFormStatus('Ponto selecionado. Selecione o município e desenhe a área de cobertura.');
         return;
       }
 
@@ -421,7 +495,7 @@ function App() {
 
           if (!location) {
             setFormStatus(
-              'Ponto selecionado. Selecione o municipio e desenhe a area de cobertura.',
+              'Ponto selecionado. Selecione o município e desenhe a área de cobertura.',
             );
             return;
           }
@@ -434,13 +508,13 @@ function App() {
               municipalityId: String(municipality.id),
             }));
             setFormStatus(
-              `Ponto selecionado em ${municipality.state ? `${municipality.state} - ` : ''}${municipality.name}. Desenhe a area de cobertura.`,
+              `Ponto selecionado em ${municipality.state ? `${municipality.state} - ` : ''}${municipality.name}. Desenhe a área de cobertura.`,
             );
             return;
           }
 
           setFormStatus(
-            `Mapbox identificou ${formatGeocodedLocation(location)}. Selecione o municipio manualmente.`,
+            `Mapbox identificou ${formatGeocodedLocation(location)}. Selecione o município manualmente.`,
           );
         })
         .catch((error: unknown) => {
@@ -450,7 +524,7 @@ function App() {
 
           geocodeAbortControllerRef.current = null;
           console.error('Failed to reverse geocode selected point', error);
-          setFormStatus('Ponto selecionado. Nao foi possivel identificar o local automaticamente.');
+          setFormStatus('Ponto selecionado. Não foi possível identificar o local automaticamente.');
         });
     },
     [tokenMissing],
@@ -471,9 +545,13 @@ function App() {
   useEffect(() => {
     if (selectedAssetInfrastructurePointId === null) {
       coverageSocioeconomicAbortControllerRef.current?.abort();
+      isochroneAbortControllerRef.current?.abort();
       setCoverageSocioeconomicData(null);
       setCoverageSocioeconomicStatus('idle');
       setCoverageSocioeconomicError(null);
+      setIsochroneData(null);
+      setIsochroneStatus('idle');
+      setIsochroneError(null);
       return;
     }
 
@@ -483,9 +561,13 @@ function App() {
     }
 
     coverageSocioeconomicAbortControllerRef.current?.abort();
+    isochroneAbortControllerRef.current?.abort();
     setCoverageSocioeconomicData(null);
     setCoverageSocioeconomicStatus('idle');
     setCoverageSocioeconomicError(null);
+    setIsochroneData(null);
+    setIsochroneStatus('idle');
+    setIsochroneError(null);
   }, [selectedAssetInfrastructurePointId]);
 
   useEffect(() => {
@@ -508,7 +590,7 @@ function App() {
           return;
         }
 
-        setFormStatus('Falha ao carregar municipios da API.');
+        setFormStatus('Falha ao carregar municípios da API.');
       });
 
     return () => {
@@ -555,7 +637,20 @@ function App() {
     map.on('style.load', () => {
       map.setConfigProperty('basemap', 'lightPreset', 'day');
       map.setConfigProperty('basemap', 'showPointOfInterestLabels', true);
+      configureUrbanBuildingStyle(map);
+      enableTerrain(map);
     });
+
+    const urbanBuildingInteractions = installUrbanBuildingInteractions(map, {
+      getSelectedAsset: () => selectedAssetRef.current,
+      onBuildingClick: () => {
+        urbanBuildingClickRef.current = true;
+        window.setTimeout(() => {
+          urbanBuildingClickRef.current = false;
+        }, 75);
+      },
+    });
+    urbanBuildingInteractionsRef.current = urbanBuildingInteractions;
 
     const syncDrawnCoverageArea = () => {
       if (suppressNextDrawDeleteRef.current) {
@@ -577,7 +672,7 @@ function App() {
       isDrawingCoverageRef.current = false;
       setIsDrawingCoverage(false);
       setDrawnCoverageArea(null);
-      setFormStatus('Area removida. Desenhe a cobertura antes de salvar.');
+      setFormStatus('Área removida. Desenhe a cobertura antes de salvar.');
     };
 
     map.on('load', () => {
@@ -600,8 +695,9 @@ function App() {
     };
 
     const selectRenderedAsset = (assetFeature: MeteorologyAssetPointFeature) => {
-      if (assetFeature.properties.municipalityState === 'PA') {
+      if (isStateModelAsset(assetFeature)) {
         setSelectedAsset(assetFeature);
+        setIsEditingExistingCoverage(false);
         setSidebarMode('model');
         clearDrawnCoverageAreaRef.current();
         setSelectedPoint(null);
@@ -612,13 +708,14 @@ function App() {
       }
 
       setSelectedAsset(assetFeature);
+      setIsEditingExistingCoverage(false);
       setSidebarMode('details');
       clearDrawnCoverageAreaRef.current();
       upsertSelectedCoverageLayer(map, selectedCoverageVisibleRef.current ? assetFeature : null);
       upsertSelectedAssetLayer(map, assetFeature);
       setSelectedPoint(null);
       upsertSelectedPointLayer(map, null);
-      setFormStatus('Entregavel selecionado. Clique em uma area vazia para cadastrar outro ponto.');
+      setFormStatus('Entregável selecionado. Clique em uma área vazia para cadastrar outro ponto.');
       map.easeTo({
         center: assetFeature.geometry.coordinates,
         zoom: Math.max(map.getZoom(), 15),
@@ -666,10 +763,7 @@ function App() {
     };
 
     map.on('click', METEOROLOGY_ASSETS_LAYER_ID, (event) => {
-      const isCreateWorkflow =
-        sidebarModeRef.current === 'create' || sidebarModeRef.current === 'coverage';
-
-      if (isCreateWorkflow) {
+      if (isDrawingCoverageRef.current || draw.getMode() === 'draw_polygon') {
         return;
       }
 
@@ -705,55 +799,61 @@ function App() {
         return;
       }
 
+      if (urbanBuildingClickRef.current) {
+        urbanBuildingClickRef.current = false;
+        return;
+      }
+
       if (isDrawingCoverageRef.current || draw.getMode() === 'draw_polygon') {
         return;
       }
 
-      const isCreateMode =
-        sidebarModeRef.current === 'create' || sidebarModeRef.current === 'coverage';
+      const modelFeatures = map.getLayer(STATE_ASSETS_3D_MODEL_LAYER_ID)
+        ? queryRenderedFeaturesAroundPoint(event.point, MODEL_CLICK_HITBOX_PX, [
+            STATE_ASSETS_3D_MODEL_LAYER_ID,
+          ])
+        : [];
+      const nearestStateAsset = findNearestAssetAtPoint(
+        event.point,
+        MODEL_CLICK_HITBOX_PX,
+        isStateModelAsset,
+      );
 
-      if (!isCreateMode) {
-        const modelFeatures = map.getLayer(PARA_ASSETS_3D_MODEL_LAYER_ID)
-          ? queryRenderedFeaturesAroundPoint(event.point, MODEL_CLICK_HITBOX_PX, [
-              PARA_ASSETS_3D_MODEL_LAYER_ID,
-            ])
-          : [];
-        const nearestParaAsset = findNearestAssetAtPoint(
-          event.point,
-          MODEL_CLICK_HITBOX_PX,
-          (assetFeature) => assetFeature.properties.municipalityState === 'PA',
-        );
+      if (nearestStateAsset) {
+        selectRenderedAsset(nearestStateAsset);
+        return;
+      }
 
-        if (nearestParaAsset) {
-          selectRenderedAsset(nearestParaAsset);
-          return;
-        }
+      if (modelFeatures.length > 0) {
+        setSidebarMode('model');
+        setSelectedAsset(null);
+        setIsEditingExistingCoverage(false);
+        clearDrawnCoverageAreaRef.current();
+        setSelectedPoint(null);
+        upsertSelectedPointLayer(map, null);
+        upsertSelectedAssetLayer(map, null);
+        return;
+      }
 
-        if (modelFeatures.length > 0) {
-          setSidebarMode('model');
-          setSelectedAsset(null);
-          clearDrawnCoverageAreaRef.current();
-          setSelectedPoint(null);
-          upsertSelectedPointLayer(map, null);
-          upsertSelectedAssetLayer(map, null);
-          return;
-        }
+      const features = queryRenderedFeaturesAroundPoint(event.point, ASSET_CLICK_HITBOX_PX, [
+        METEOROLOGY_ASSETS_LAYER_ID,
+      ]);
+      const assetFeature =
+        (features[0] ? readAssetFromRenderedFeature(features[0]) : null) ??
+        findNearestAssetAtPoint(event.point, ASSET_CLICK_HITBOX_PX);
 
-        const features = queryRenderedFeaturesAroundPoint(event.point, ASSET_CLICK_HITBOX_PX, [
-          METEOROLOGY_ASSETS_LAYER_ID,
-        ]);
-        const assetFeature =
-          (features[0] ? readAssetFromRenderedFeature(features[0]) : null) ??
-          findNearestAssetAtPoint(event.point, ASSET_CLICK_HITBOX_PX);
+      if (assetFeature) {
+        selectRenderedAsset(assetFeature);
+        return;
+      }
 
-        if (assetFeature) {
-          selectRenderedAsset(assetFeature);
-          return;
-        }
+      if (hasUrbanBuildingAtPoint(map, event.point, event.lngLat, selectedAssetRef.current)) {
+        return;
       }
 
       const coordinates: [number, number] = [event.lngLat.lng, event.lngLat.lat];
       setSelectedAsset(null);
+      setIsEditingExistingCoverage(false);
       setSidebarMode('create');
       clearDrawnCoverageAreaRef.current();
       upsertSelectedCoverageLayer(map, null);
@@ -780,6 +880,8 @@ function App() {
     return () => {
       map.off('draw.create', syncDrawnCoverageArea);
       map.off('draw.delete', syncDrawnCoverageArea);
+      urbanBuildingInteractions.dispose();
+      urbanBuildingInteractionsRef.current = null;
       drawRef.current = null;
       map.remove();
       mapRef.current = null;
@@ -812,13 +914,34 @@ function App() {
   }, [coverageSocioeconomicData, isMapLoaded]);
 
   useEffect(() => {
+    if (!isMapLoaded || !mapRef.current) {
+      return;
+    }
+
+    upsertIsochroneLayer(mapRef.current, isochroneData);
+  }, [isochroneData, isMapLoaded]);
+
+  useEffect(() => {
+    if (!isMapLoaded || !mapRef.current || !selectedAsset) {
+      setSelectedAssetElevationMeters(null);
+      return;
+    }
+
+    const elevation = mapRef.current.queryTerrainElevation(selectedAsset.geometry.coordinates, {
+      exaggerated: false,
+    });
+
+    setSelectedAssetElevationMeters(typeof elevation === 'number' ? elevation : null);
+  }, [isMapLoaded, selectedAsset]);
+
+  useEffect(() => {
     const map = mapRef.current;
 
     if (!isMapLoaded || !map) {
       return;
     }
 
-    const paraAssets = upsertParaAsset3dModels(map, assetsGeoJson, {
+    const stateAssets = upsertStateAsset3dModels(map, assetsGeoJson, {
       modelUrl: selectedAssetModelUrl,
       scale: [modelCalibration.scaleX, modelCalibration.scaleY, modelCalibration.scaleZ],
       rotation: [0, 0, modelCalibration.rotationZ],
@@ -830,24 +953,24 @@ function App() {
       minZoom: 15,
       onReady: () => {
         void measureMapFrameRate(5000).then((measurement) => {
-          console.info('Para 3D model performance', {
+          console.info('Configured state 3D model performance', {
             modelUrl: selectedAssetModelUrl,
-            assetsCount: paraAssets.length,
+            assetsCount: stateAssets.length,
             ...measurement,
           });
         });
       },
       onError: (error) => {
-        console.error('Failed to render Para 3D models', error);
+        console.error('Failed to render configured state 3D models', error);
       },
     });
 
-    if (paraAssets.length > 0 && !hasFocusedParaModelsRef.current) {
-      const firstParaAsset = paraAssets[0];
-      hasFocusedParaModelsRef.current = true;
+    if (stateAssets.length > 0 && !hasFocusedStateModelsRef.current) {
+      const firstStateAsset = stateAssets[0];
+      hasFocusedStateModelsRef.current = true;
 
       map.easeTo({
-        center: firstParaAsset.geometry.coordinates,
+        center: firstStateAsset.geometry.coordinates,
         zoom: 15.27,
         pitch: 42,
         bearing: -50,
@@ -857,7 +980,7 @@ function App() {
 
     return () => {
       if (mapRef.current) {
-        removeParaAsset3dModels(mapRef.current);
+        removeStateAsset3dModels(mapRef.current);
       }
     };
   }, [assetsGeoJson, isMapLoaded, modelCalibration]);
@@ -972,7 +1095,7 @@ function App() {
 
         const errorMessage = getErrorMessage(error);
         console.error('Failed to load filtered meteorology assets from API', error);
-        setFormStatus(`Falha ao carregar entregaveis da API: ${errorMessage}`);
+        setFormStatus(`Falha ao carregar entregáveis da API: ${errorMessage}`);
       });
 
     if (hasActiveFilters && totalAssetsCount === 0) {
@@ -1040,7 +1163,7 @@ function App() {
           if (!reloadedAsset) {
             setCoverageSocioeconomicStatus('failed');
             setCoverageSocioeconomicError(
-              'O ativo selecionado nao existe mais na base atual. Selecione o ativo novamente.',
+              'O ativo selecionado não existe mais na base atual. Selecione o ativo novamente.',
             );
             return;
           }
@@ -1094,6 +1217,145 @@ function App() {
     }
   }, [filters, reloadAssets, selectedAsset]);
 
+  const loadSelectedAssetIsochrone = useCallback(async () => {
+    if (!selectedAsset || !accessToken || tokenMissing) {
+      return;
+    }
+
+    isochroneAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    isochroneAbortControllerRef.current = abortController;
+    setIsochroneStatus('loading');
+    setIsochroneError(null);
+
+    try {
+      const data = await fetchIsochrone(
+        abortController.signal,
+        selectedAsset.geometry.coordinates,
+        accessToken,
+      );
+
+      if (abortController.signal.aborted) {
+        return;
+      }
+
+      setIsochroneData(data);
+      setIsochroneStatus('complete');
+    } catch (error: unknown) {
+      if (isAbortError(error)) {
+        return;
+      }
+
+      const errorMessage = getErrorMessage(error);
+      console.error('Failed to load isochrone', error);
+      setIsochroneStatus('failed');
+      setIsochroneError(errorMessage);
+    } finally {
+      if (isochroneAbortControllerRef.current === abortController) {
+        isochroneAbortControllerRef.current = null;
+      }
+    }
+  }, [selectedAsset, tokenMissing]);
+
+  const handleLocationSearch = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+
+      const query = locationSearchQuery.trim();
+
+      if (!query || !accessToken || tokenMissing) {
+        return;
+      }
+
+      locationSearchAbortControllerRef.current?.abort();
+      const abortController = new AbortController();
+      locationSearchAbortControllerRef.current = abortController;
+      setLocationSearchStatus('loading');
+      setLocationSearchMessage(null);
+
+      try {
+        const result = await searchLocation(abortController.signal, query, accessToken);
+
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        if (!result) {
+          setLocationSearchStatus('failed');
+          setLocationSearchMessage('Nenhum local encontrado no Brasil.');
+          return;
+        }
+
+        mapRef.current?.easeTo({
+          center: result.coordinates,
+          zoom: 12,
+          pitch: 42,
+          duration: 700,
+        });
+        setLocationSearchStatus('complete');
+        setLocationSearchMessage(result.label);
+      } catch (error: unknown) {
+        if (isAbortError(error)) {
+          return;
+        }
+
+        setLocationSearchStatus('failed');
+        setLocationSearchMessage(getErrorMessage(error));
+      } finally {
+        if (locationSearchAbortControllerRef.current === abortController) {
+          locationSearchAbortControllerRef.current = null;
+        }
+      }
+    },
+    [locationSearchQuery, tokenMissing],
+  );
+
+  const saveCoverageEdit = useCallback(async () => {
+    if (!selectedAsset || !drawnCoverageArea) {
+      setFormStatus('Redesenhe a cobertura antes de salvar a alteração.');
+      return;
+    }
+
+    setIsSavingCoverageEdit(true);
+    setFormStatus('Salvando nova cobertura do ativo...');
+
+    try {
+      await updateMeteorologyAssetCoverage(
+        selectedAsset.properties.infrastructurePointId,
+        drawnCoverageArea,
+      );
+
+      const updatedAsset: MeteorologyAssetPointFeature = {
+        ...selectedAsset,
+        properties: {
+          ...selectedAsset.properties,
+          coverageArea: drawnCoverageArea,
+        },
+      };
+      const abortController = new AbortController();
+      await reloadAssets(abortController.signal, filters);
+      setSelectedAsset(updatedAsset);
+      setDrawnCoverageArea(null);
+      setIsEditingExistingCoverage(false);
+      setSidebarMode('details');
+      setFormStatus('Cobertura atualizada. Dados e polígono foram recarregados.');
+
+      if (mapRef.current) {
+        upsertSelectedCoverageLayer(
+          mapRef.current,
+          selectedCoverageVisibleRef.current ? updatedAsset : null,
+        );
+        upsertSelectedAssetLayer(mapRef.current, updatedAsset);
+      }
+    } catch (error: unknown) {
+      const errorMessage = getErrorMessage(error);
+      console.error('Failed to update meteorology asset coverage', error);
+      setFormStatus(`Falha ao atualizar cobertura: ${errorMessage}`);
+    } finally {
+      setIsSavingCoverageEdit(false);
+    }
+  }, [drawnCoverageArea, filters, reloadAssets, selectedAsset]);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -1108,12 +1370,12 @@ function App() {
     }
 
     if (!form.municipalityId) {
-      setFormStatus('Selecione um municipio.');
+      setFormStatus('Selecione um município.');
       return;
     }
 
     if (!drawnCoverageArea) {
-      setFormStatus('Desenhe a area de cobertura antes de salvar.');
+      setFormStatus('Desenhe a área de cobertura antes de salvar.');
       return;
     }
 
@@ -1130,7 +1392,7 @@ function App() {
     };
 
     setIsSubmitting(true);
-    setFormStatus('Salvando ativo meteorologico...');
+    setFormStatus('Salvando ativo meteorológico...');
 
     try {
       await createMeteorologyAsset(payload);
@@ -1156,7 +1418,7 @@ function App() {
     } catch (error: unknown) {
       const errorMessage = getErrorMessage(error);
       console.error('Failed to create meteorology asset', error);
-      setFormStatus(`Falha ao salvar ativo meteorologico: ${errorMessage}`);
+      setFormStatus(`Falha ao salvar ativo meteorológico: ${errorMessage}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -1191,7 +1453,8 @@ function App() {
     const map = mapRef.current;
 
     setSelectedAsset(assetFeature);
-    setSidebarMode(assetFeature.properties.municipalityState === 'PA' ? 'model' : 'details');
+    setIsEditingExistingCoverage(false);
+    setSidebarMode(isStateModelAsset(assetFeature) ? 'model' : 'details');
     clearDrawnCoverageAreaRef.current();
     setSelectedPoint(null);
 
@@ -1229,13 +1492,21 @@ function App() {
           form={form}
           formStatus={formStatus}
           isDrawingCoverage={isDrawingCoverage}
+          isEditingExistingCoverage={isEditingExistingCoverage}
+          isSavingCoverageEdit={isSavingCoverageEdit}
           isSelectedCoverageVisible={isSelectedCoverageVisible}
           isSubmitting={isSubmitting}
+          isochroneError={isochroneError}
+          isochroneStatus={isochroneStatus}
+          locationSearchMessage={locationSearchMessage}
+          locationSearchQuery={locationSearchQuery}
+          locationSearchStatus={locationSearchStatus}
           mode={sidebarMode}
           modelCalibration={modelCalibration}
           modelPerformance={modelPerformance}
           municipalities={municipalities}
           selectedAsset={selectedAsset}
+          selectedAssetElevationMeters={selectedAssetElevationMeters}
           selectedPoint={selectedPoint}
           totalCount={totalAssetsCount || assetsGeoJson.features.length}
           visibleCount={assetsGeoJson.features.length}
@@ -1246,14 +1517,19 @@ function App() {
           onFocusCoverage={focusSelectedAssetCoverage}
           onFinishCoverageDraw={finishCoverageDraw}
           onLoadCoverageSocioeconomicData={loadCoverageSocioeconomicData}
+          onLoadIsochrone={loadSelectedAssetIsochrone}
+          onLocationSearchSubmit={handleLocationSearch}
           onResetCreateDraft={resetCreateDraft}
           onResetModelCalibration={resetModelCalibration}
+          onSaveCoverageEdit={saveCoverageEdit}
           onSelectAsset={selectAssetFromSidebar}
+          onStartSelectedCoverageEdit={startSelectedCoverageEdit}
           onStartCoverageDraw={startCoverageDraw}
           onStartCreate={startCreateWorkflow}
           onSubmit={handleSubmit}
           onToggleSelectedCoverage={setSelectedCoverageVisibility}
           setForm={setForm}
+          setLocationSearchQuery={setLocationSearchQuery}
           setModelCalibration={setModelCalibration}
         />
       )}

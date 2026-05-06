@@ -19,5 +19,5 @@ Na raiz do monorepo:
 pnpm dev:web
 ```
 
-Quando alterar `vite.config.ts` ou dependencias do Vite/Tailwind, reinicie o
+Quando alterar `vite.config.ts` ou dependências do Vite/Tailwind, reinicie o
 dev server.

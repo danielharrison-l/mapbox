@@ -5,15 +5,16 @@ import type {
   PolygonGeometry,
 } from '../types/geo';
 
-export const PARA_ASSETS_3D_CLIP_LAYER_ID = 'para-assets-3d-clip';
-export const PARA_ASSETS_3D_MODEL_LAYER_ID = 'para-assets-3d-model';
+export const STATE_ASSETS_3D_CLIP_LAYER_ID = 'state-assets-3d-clip';
+export const STATE_ASSETS_3D_MODEL_LAYER_ID = 'state-assets-3d-model';
 export const SELECTED_ASSET_3D_CLIP_LAYER_ID = 'selected-asset-3d-clip';
 export const SELECTED_ASSET_3D_MODEL_LAYER_ID = 'selected-asset-3d-model';
 
-const PARA_ASSETS_3D_CLIP_SOURCE_ID = 'para-assets-3d-clip';
-const PARA_ASSETS_3D_MODEL_SOURCE_ID = 'para-assets-3d-model';
+const STATE_ASSETS_3D_CLIP_SOURCE_ID = 'state-assets-3d-clip';
+const STATE_ASSETS_3D_MODEL_SOURCE_ID = 'state-assets-3d-model';
 const SELECTED_ASSET_3D_CLIP_SOURCE_ID = 'selected-asset-3d-clip';
 const SELECTED_ASSET_3D_MODEL_SOURCE_ID = 'selected-asset-3d-model';
+const MODEL_ASSET_STATES = new Set(['MG', 'PA', 'SP']);
 
 type Asset3dModelOptions = {
   modelUrl: string;
@@ -208,12 +209,14 @@ function addClipAndModelLayers(
   map.triggerRepaint();
 }
 
-function isParaAsset(asset: MeteorologyAssetPointFeature) {
-  return asset.properties.municipalityState === 'PA';
+export function isStateModelAsset(asset: MeteorologyAssetPointFeature) {
+  const state = asset.properties.municipalityState;
+
+  return Boolean(state && MODEL_ASSET_STATES.has(state));
 }
 
-export function getParaAssets(assetsGeoJson: MeteorologyAssetsPointCollection) {
-  return assetsGeoJson.features.filter(isParaAsset);
+export function getStateModelAssets(assetsGeoJson: MeteorologyAssetsPointCollection) {
+  return assetsGeoJson.features.filter(isStateModelAsset);
 }
 
 export function getAssetBounds(assets: MeteorologyAssetPointFeature[]) {
@@ -235,44 +238,44 @@ export function getAssetBounds(assets: MeteorologyAssetPointFeature[]) {
   return bounds;
 }
 
-export function removeParaAsset3dModels(map: mapboxgl.Map) {
-  removeLayerIfExists(map, PARA_ASSETS_3D_MODEL_LAYER_ID);
-  removeLayerIfExists(map, PARA_ASSETS_3D_CLIP_LAYER_ID);
-  removeSourceIfExists(map, PARA_ASSETS_3D_MODEL_SOURCE_ID);
-  removeSourceIfExists(map, PARA_ASSETS_3D_CLIP_SOURCE_ID);
+export function removeStateAsset3dModels(map: mapboxgl.Map) {
+  removeLayerIfExists(map, STATE_ASSETS_3D_MODEL_LAYER_ID);
+  removeLayerIfExists(map, STATE_ASSETS_3D_CLIP_LAYER_ID);
+  removeSourceIfExists(map, STATE_ASSETS_3D_MODEL_SOURCE_ID);
+  removeSourceIfExists(map, STATE_ASSETS_3D_CLIP_SOURCE_ID);
 }
 
-export function upsertParaAsset3dModels(
+export function upsertStateAsset3dModels(
   map: mapboxgl.Map,
   assetsGeoJson: MeteorologyAssetsPointCollection,
   options: Asset3dModelOptions,
 ) {
-  removeParaAsset3dModels(map);
+  removeStateAsset3dModels(map);
 
-  const paraAssets = getParaAssets(assetsGeoJson);
+  const stateAssets = getStateModelAssets(assetsGeoJson);
 
-  if (paraAssets.length === 0) {
-    return paraAssets;
+  if (stateAssets.length === 0) {
+    return stateAssets;
   }
 
   try {
     addClipAndModelLayers(
       map,
-      paraAssets,
+      stateAssets,
       {
-        clipLayerId: PARA_ASSETS_3D_CLIP_LAYER_ID,
-        clipSourceId: PARA_ASSETS_3D_CLIP_SOURCE_ID,
-        modelLayerId: PARA_ASSETS_3D_MODEL_LAYER_ID,
-        modelSourceId: PARA_ASSETS_3D_MODEL_SOURCE_ID,
+        clipLayerId: STATE_ASSETS_3D_CLIP_LAYER_ID,
+        clipSourceId: STATE_ASSETS_3D_CLIP_SOURCE_ID,
+        modelLayerId: STATE_ASSETS_3D_MODEL_LAYER_ID,
+        modelSourceId: STATE_ASSETS_3D_MODEL_SOURCE_ID,
       },
       options,
     );
   } catch (error) {
-    removeParaAsset3dModels(map);
+    removeStateAsset3dModels(map);
     options.onError?.(error);
   }
 
-  return paraAssets;
+  return stateAssets;
 }
 
 export function removeSelectedAsset3dModel(map: mapboxgl.Map) {

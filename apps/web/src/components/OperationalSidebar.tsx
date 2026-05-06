@@ -16,6 +16,7 @@ import {
   Plus,
   RotateCcw,
   Save,
+  Search,
   Trash2,
 } from 'lucide-react';
 import { type Dispatch, type FormEvent, type SetStateAction, useMemo } from 'react';
@@ -51,6 +52,7 @@ import { Switch } from './ui/switch';
 import { Tabs, TabsContent } from './ui/tabs';
 
 export type OperationalSidebarMode =
+  | 'search'
   | 'assets'
   | 'details'
   | 'create'
@@ -68,13 +70,21 @@ type OperationalSidebarProps = {
   form: AssetFormState;
   formStatus: string;
   isDrawingCoverage: boolean;
+  isEditingExistingCoverage: boolean;
+  isSavingCoverageEdit: boolean;
   isSubmitting: boolean;
   isSelectedCoverageVisible: boolean;
+  isochroneError: string | null;
+  isochroneStatus: 'idle' | 'loading' | 'complete' | 'failed';
+  locationSearchMessage: string | null;
+  locationSearchQuery: string;
+  locationSearchStatus: 'idle' | 'loading' | 'complete' | 'failed';
   mode: OperationalSidebarMode;
   modelCalibration: ModelCalibration;
   modelPerformance: ModelPerformance;
   municipalities: Municipality[];
   selectedAsset: MeteorologyAssetPointFeature | null;
+  selectedAssetElevationMeters: number | null;
   selectedPoint: [number, number] | null;
   totalCount: number;
   visibleCount: number;
@@ -85,14 +95,19 @@ type OperationalSidebarProps = {
   onFocusCoverage: () => void;
   onFinishCoverageDraw: () => void;
   onLoadCoverageSocioeconomicData: () => void;
+  onLoadIsochrone: () => void;
+  onLocationSearchSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onResetCreateDraft: () => void;
   onResetModelCalibration: () => void;
+  onSaveCoverageEdit: () => void;
   onSelectAsset: (asset: MeteorologyAssetPointFeature) => void;
   onStartCoverageDraw: () => void;
   onStartCreate: () => void;
+  onStartSelectedCoverageEdit: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onToggleSelectedCoverage: (visible: boolean) => void;
   setForm: Dispatch<SetStateAction<AssetFormState>>;
+  setLocationSearchQuery: Dispatch<SetStateAction<string>>;
   setModelCalibration: Dispatch<SetStateAction<ModelCalibration>>;
 };
 
@@ -113,7 +128,7 @@ const calibrationFields: CalibrationField[] = [
   { key: 'scaleX', label: 'Escala X', min: 0.1, max: 3, step: 0.05, suffix: 'x' },
   { key: 'scaleY', label: 'Escala Y', min: 0.1, max: 3, step: 0.05, suffix: 'x' },
   { key: 'scaleZ', label: 'Altura', min: 0.1, max: 4, step: 0.05, suffix: 'x' },
-  { key: 'rotationZ', label: 'Rotacao', min: 0, max: 360, step: 1, suffix: 'deg' },
+  { key: 'rotationZ', label: 'Rotação', min: 0, max: 360, step: 1, suffix: '°' },
   { key: 'clipRadiusMeters', label: 'Recorte', min: 10, max: 200, step: 5, suffix: 'm' },
 ];
 
@@ -124,11 +139,12 @@ const sidebarNavigationItems: Array<{
   mode: OperationalSidebarMode;
   requiresAsset?: boolean;
 }> = [
-  { icon: ListFilter, label: 'Ativos', mobileLabel: 'Assets', mode: 'assets' },
+  { icon: Search, label: 'Pesquisa', mobileLabel: 'Busca', mode: 'search' },
+  { icon: ListFilter, label: 'Ativos', mobileLabel: 'Ativos', mode: 'assets' },
   { icon: Info, label: 'Detalhes', mobileLabel: 'Info', mode: 'details', requiresAsset: true },
-  { icon: Plus, label: 'Cadastro', mobileLabel: 'Create', mode: 'create' },
-  { icon: PenTool, label: 'Cobertura', mobileLabel: 'Map', mode: 'coverage' },
-  { icon: Database, label: 'Dados', mobileLabel: 'Data', mode: 'data', requiresAsset: true },
+  { icon: Plus, label: 'Cadastro', mobileLabel: 'Novo', mode: 'create' },
+  { icon: PenTool, label: 'Cobertura', mobileLabel: 'Mapa', mode: 'coverage' },
+  { icon: Database, label: 'Dados', mobileLabel: 'Dados', mode: 'data', requiresAsset: true },
   { icon: Box, label: 'Modelo 3D', mobileLabel: '3D', mode: 'model' },
 ];
 
@@ -140,29 +156,33 @@ const metricCardClassName =
   'grid min-h-[70px] min-w-0 gap-1.5 rounded-lg border border-slate-200 bg-white p-3 shadow-sm';
 
 const modeCopy: Record<OperationalSidebarMode, { title: string; subtitle: string }> = {
+  search: {
+    title: 'Pesquisa',
+    subtitle: 'Município, endereço ou coordenadas',
+  },
   assets: {
-    title: 'Inventario de Ativos',
-    subtitle: 'Filtros e selecao operacional',
+    title: 'Inventário de Ativos',
+    subtitle: 'Filtros e seleção operacional',
   },
   details: {
     title: 'Detalhes do Ativo',
-    subtitle: 'Resumo tecnico do ponto selecionado',
+    subtitle: 'Resumo técnico do ponto selecionado',
   },
   create: {
     title: 'Cadastrar Ativo',
-    subtitle: 'Novo ponto meteorologico',
+    subtitle: 'Novo ponto meteorológico',
   },
   coverage: {
-    title: 'Area de Cobertura',
-    subtitle: 'Desenho e revisao do poligono',
+    title: 'Área de Cobertura',
+    subtitle: 'Desenho e revisão do polígono',
   },
   data: {
-    title: 'Analise Socioeconomica',
-    subtitle: 'Relatorio operacional de area metropolitana',
+    title: 'Análise Socioeconômica',
+    subtitle: 'Relatório operacional de área metropolitana',
   },
   model: {
     title: 'Modelo 3D',
-    subtitle: 'Calibracao e performance',
+    subtitle: 'Calibração e performance',
   },
 };
 
@@ -178,7 +198,7 @@ const integerFormatter = new Intl.NumberFormat('pt-BR', {
 
 function getModelPerformanceLabel(modelPerformance: ModelPerformance) {
   if (modelPerformance.status === 'measuring') {
-    return 'Medindo renderizacao';
+    return 'Medindo renderização';
   }
 
   if (modelPerformance.status === 'complete') {
@@ -189,7 +209,7 @@ function getModelPerformanceLabel(modelPerformance: ModelPerformance) {
     return 'Falha no modelo';
   }
 
-  return 'Aguardando selecao';
+  return 'Aguardando seleção';
 }
 
 function getCoverageVerticesCount(coverageArea: PolygonGeometry | null) {
@@ -201,10 +221,10 @@ function getCoverageGeometryLabel(
   isSelectedCoverageVisible: boolean,
 ) {
   if (!selectedAsset.properties.coverageArea) {
-    return 'Nao cadastrada';
+    return 'Não cadastrada';
   }
 
-  return isSelectedCoverageVisible ? 'Poligono visivel' : 'Poligono oculto';
+  return isSelectedCoverageVisible ? 'Polígono visível' : 'Polígono oculto';
 }
 
 export function OperationalSidebar({
@@ -217,13 +237,21 @@ export function OperationalSidebar({
   form,
   formStatus,
   isDrawingCoverage,
+  isEditingExistingCoverage,
+  isSavingCoverageEdit,
   isSubmitting,
   isSelectedCoverageVisible,
+  isochroneError,
+  isochroneStatus,
+  locationSearchMessage,
+  locationSearchQuery,
+  locationSearchStatus,
   mode,
   modelCalibration,
   modelPerformance,
   municipalities,
   selectedAsset,
+  selectedAssetElevationMeters,
   selectedPoint,
   totalCount,
   visibleCount,
@@ -234,14 +262,19 @@ export function OperationalSidebar({
   onFocusCoverage,
   onFinishCoverageDraw,
   onLoadCoverageSocioeconomicData,
+  onLoadIsochrone,
+  onLocationSearchSubmit,
   onResetCreateDraft,
   onResetModelCalibration,
+  onSaveCoverageEdit,
   onSelectAsset,
   onStartCoverageDraw,
   onStartCreate,
+  onStartSelectedCoverageEdit,
   onSubmit,
   onToggleSelectedCoverage,
   setForm,
+  setLocationSearchQuery,
   setModelCalibration,
 }: OperationalSidebarProps) {
   return (
@@ -256,13 +289,21 @@ export function OperationalSidebar({
         form={form}
         formStatus={formStatus}
         isDrawingCoverage={isDrawingCoverage}
+        isEditingExistingCoverage={isEditingExistingCoverage}
+        isSavingCoverageEdit={isSavingCoverageEdit}
         isSubmitting={isSubmitting}
         isSelectedCoverageVisible={isSelectedCoverageVisible}
+        isochroneError={isochroneError}
+        isochroneStatus={isochroneStatus}
+        locationSearchMessage={locationSearchMessage}
+        locationSearchQuery={locationSearchQuery}
+        locationSearchStatus={locationSearchStatus}
         mode={mode}
         modelCalibration={modelCalibration}
         modelPerformance={modelPerformance}
         municipalities={municipalities}
         selectedAsset={selectedAsset}
+        selectedAssetElevationMeters={selectedAssetElevationMeters}
         selectedPoint={selectedPoint}
         totalCount={totalCount}
         visibleCount={visibleCount}
@@ -273,14 +314,19 @@ export function OperationalSidebar({
         onFocusCoverage={onFocusCoverage}
         onFinishCoverageDraw={onFinishCoverageDraw}
         onLoadCoverageSocioeconomicData={onLoadCoverageSocioeconomicData}
+        onLoadIsochrone={onLoadIsochrone}
+        onLocationSearchSubmit={onLocationSearchSubmit}
         onResetCreateDraft={onResetCreateDraft}
         onResetModelCalibration={onResetModelCalibration}
+        onSaveCoverageEdit={onSaveCoverageEdit}
         onSelectAsset={onSelectAsset}
         onStartCoverageDraw={onStartCoverageDraw}
         onStartCreate={onStartCreate}
+        onStartSelectedCoverageEdit={onStartSelectedCoverageEdit}
         onSubmit={onSubmit}
         onToggleSelectedCoverage={onToggleSelectedCoverage}
         setForm={setForm}
+        setLocationSearchQuery={setLocationSearchQuery}
         setModelCalibration={setModelCalibration}
       />
     </SidebarProvider>
@@ -297,13 +343,21 @@ function OperationalSidebarShell({
   form,
   formStatus,
   isDrawingCoverage,
+  isEditingExistingCoverage,
+  isSavingCoverageEdit,
   isSubmitting,
   isSelectedCoverageVisible,
+  isochroneError,
+  isochroneStatus,
+  locationSearchMessage,
+  locationSearchQuery,
+  locationSearchStatus,
   mode,
   modelCalibration,
   modelPerformance,
   municipalities,
   selectedAsset,
+  selectedAssetElevationMeters,
   selectedPoint,
   totalCount,
   visibleCount,
@@ -314,14 +368,19 @@ function OperationalSidebarShell({
   onFocusCoverage,
   onFinishCoverageDraw,
   onLoadCoverageSocioeconomicData,
+  onLoadIsochrone,
+  onLocationSearchSubmit,
   onResetCreateDraft,
   onResetModelCalibration,
+  onSaveCoverageEdit,
   onSelectAsset,
   onStartCoverageDraw,
   onStartCreate,
+  onStartSelectedCoverageEdit,
   onSubmit,
   onToggleSelectedCoverage,
   setForm,
+  setLocationSearchQuery,
   setModelCalibration,
 }: OperationalSidebarProps) {
   const { open, setOpen, toggleSidebar } = useSidebar();
@@ -343,7 +402,7 @@ function OperationalSidebarShell({
     ? `#${String(selectedAsset.properties.infrastructurePointId).padStart(5, '0')}`
     : selectedPoint
       ? 'Novo ponto'
-      : 'Sem selecao';
+      : 'Sem seleção';
   const handleModeNavigation = (nextMode: OperationalSidebarMode) => {
     onChangeMode(nextMode);
     setOpen(nextMode === mode ? !open : true);
@@ -351,7 +410,7 @@ function OperationalSidebarShell({
 
   return (
     <Sidebar
-      aria-label="Operacoes do mapa"
+      aria-label="Operações do mapa"
       className="font-sans shadow-[8px_0_30px_rgb(15_23_42_/_10%)]"
     >
       <Tabs
@@ -425,6 +484,16 @@ function OperationalSidebarShell({
               </SidebarHeader>
 
               <SidebarContent>
+                <TabsContent value="search">
+                  <SearchTab
+                    locationSearchMessage={locationSearchMessage}
+                    locationSearchQuery={locationSearchQuery}
+                    locationSearchStatus={locationSearchStatus}
+                    setLocationSearchQuery={setLocationSearchQuery}
+                    onSubmit={onLocationSearchSubmit}
+                  />
+                </TabsContent>
+
                 <TabsContent value="assets">
                   <AssetsTab
                     assets={assets}
@@ -442,8 +511,12 @@ function OperationalSidebarShell({
                 <TabsContent value="details">
                   <DetailsTab
                     isSelectedCoverageVisible={isSelectedCoverageVisible}
+                    isochroneError={isochroneError}
+                    isochroneStatus={isochroneStatus}
                     selectedAsset={selectedAsset}
+                    selectedAssetElevationMeters={selectedAssetElevationMeters}
                     onFocusCoverage={onFocusCoverage}
+                    onLoadIsochrone={onLoadIsochrone}
                     onOpenCoverage={() => onChangeMode('coverage')}
                     onOpenData={() => {
                       onChangeMode('data');
@@ -473,6 +546,8 @@ function OperationalSidebarShell({
                     coverageVerticesCount={coverageVerticesCount}
                     formStatus={formStatus}
                     isDrawingCoverage={isDrawingCoverage}
+                    isEditingExistingCoverage={isEditingExistingCoverage}
+                    isSavingCoverageEdit={isSavingCoverageEdit}
                     isSelectedCoverageVisible={isSelectedCoverageVisible}
                     isSubmitting={isSubmitting}
                     selectedAsset={selectedAsset}
@@ -481,6 +556,8 @@ function OperationalSidebarShell({
                     onFinishCoverageDraw={onFinishCoverageDraw}
                     onFocusCoverage={onFocusCoverage}
                     onStartCoverageDraw={onStartCoverageDraw}
+                    onStartSelectedCoverageEdit={onStartSelectedCoverageEdit}
+                    onSaveCoverageEdit={onSaveCoverageEdit}
                     onSubmit={onSubmit}
                     onToggleSelectedCoverage={onToggleSelectedCoverage}
                   />
@@ -510,16 +587,16 @@ function OperationalSidebarShell({
 
               <SidebarFooter>
                 <div className="flex items-center justify-between text-[11px] text-slate-700">
-                  <span className="font-semibold">Sync Status</span>
+                  <span className="font-semibold">Sincronização</span>
                   <span className="inline-flex items-center gap-1 font-semibold text-emerald-700">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
-                    Live
+                    Ativo
                   </span>
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[11px] text-slate-700">
                   <span>Lat: {statusCoordinates.latitude}</span>
                   <span>Long: {statusCoordinates.longitude}</span>
-                  <span>Visiveis: {visibleCount}</span>
+                  <span>Visíveis: {visibleCount}</span>
                   <span>{selectedContextLabel}</span>
                 </div>
               </SidebarFooter>
@@ -557,6 +634,90 @@ function OperationalSidebarShell({
   );
 }
 
+function SearchTab({
+  locationSearchMessage,
+  locationSearchQuery,
+  locationSearchStatus,
+  setLocationSearchQuery,
+  onSubmit,
+}: {
+  locationSearchMessage: string | null;
+  locationSearchQuery: string;
+  locationSearchStatus: 'idle' | 'loading' | 'complete' | 'failed';
+  setLocationSearchQuery: Dispatch<SetStateAction<string>>;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <div className="grid gap-5">
+      <section className="grid gap-3">
+        <h2 className={sectionTitleClassName}>Localizar no mapa</h2>
+        <MapSearchForm
+          locationSearchMessage={locationSearchMessage}
+          locationSearchQuery={locationSearchQuery}
+          locationSearchStatus={locationSearchStatus}
+          setLocationSearchQuery={setLocationSearchQuery}
+          onSubmit={onSubmit}
+        />
+      </section>
+    </div>
+  );
+}
+
+function MapSearchForm({
+  locationSearchMessage,
+  locationSearchQuery,
+  locationSearchStatus,
+  setLocationSearchQuery,
+  onSubmit,
+}: {
+  locationSearchMessage: string | null;
+  locationSearchQuery: string;
+  locationSearchStatus: 'idle' | 'loading' | 'complete' | 'failed';
+  setLocationSearchQuery: Dispatch<SetStateAction<string>>;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const isLoading = locationSearchStatus === 'loading';
+
+  return (
+    <form
+      className="grid gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm"
+      onSubmit={onSubmit}
+    >
+      <label className="sr-only" htmlFor="sidebar-mapbox-location-search">
+        Buscar local no mapa
+      </label>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+        <input
+          className="min-h-9 min-w-0 rounded-md border border-slate-200 px-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+          id="sidebar-mapbox-location-search"
+          placeholder="Município, endereço ou coordenadas"
+          value={locationSearchQuery}
+          onChange={(event) => setLocationSearchQuery(event.target.value)}
+        />
+        <Button
+          className="h-9 px-3 text-xs"
+          disabled={isLoading || !locationSearchQuery.trim()}
+          size="sm"
+          type="submit"
+        >
+          <Search size={14} />
+          {isLoading ? 'Buscando' : 'Ir'}
+        </Button>
+      </div>
+      {locationSearchMessage && (
+        <span
+          className={cn(
+            'min-w-0 truncate px-1 text-xs font-semibold',
+            locationSearchStatus === 'failed' ? 'text-red-600' : 'text-slate-600',
+          )}
+        >
+          {locationSearchMessage}
+        </span>
+      )}
+    </form>
+  );
+}
+
 function AssetsTab({
   assets,
   filters,
@@ -582,7 +743,7 @@ function AssetsTab({
     <div className="grid gap-5">
       <section className="grid gap-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className={sectionTitleClassName}>Filtros e inventario</h2>
+          <h2 className={sectionTitleClassName}>Filtros e inventário</h2>
           <Badge variant="secondary">
             {visibleCount}/{totalCount}
           </Badge>
@@ -643,7 +804,7 @@ function AssetsTab({
       <Separator />
 
       <section className="grid gap-2">
-        <h2 className={sectionTitleClassName}>Ativos visiveis</h2>
+        <h2 className={sectionTitleClassName}>Ativos visíveis</h2>
         <div className="grid gap-2">
           {assets.map((asset) => (
             <button
@@ -662,7 +823,7 @@ function AssetsTab({
               </div>
               <span className="text-xs font-semibold text-slate-500">
                 {asset.properties.municipalityState ?? '-'} -{' '}
-                {asset.properties.municipalityName ?? 'Municipio nao informado'}
+                {asset.properties.municipalityName ?? 'Município não informado'}
               </span>
             </button>
           ))}
@@ -674,15 +835,23 @@ function AssetsTab({
 
 function DetailsTab({
   isSelectedCoverageVisible,
+  isochroneError,
+  isochroneStatus,
   selectedAsset,
+  selectedAssetElevationMeters,
   onFocusCoverage,
+  onLoadIsochrone,
   onOpenCoverage,
   onOpenData,
   onToggleSelectedCoverage,
 }: {
   isSelectedCoverageVisible: boolean;
+  isochroneError: string | null;
+  isochroneStatus: 'idle' | 'loading' | 'complete' | 'failed';
   selectedAsset: MeteorologyAssetPointFeature | null;
+  selectedAssetElevationMeters: number | null;
   onFocusCoverage: () => void;
+  onLoadIsochrone: () => void;
   onOpenCoverage: () => void;
   onOpenData: () => void;
   onToggleSelectedCoverage: (visible: boolean) => void;
@@ -709,11 +878,23 @@ function DetailsTab({
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Metric label="Municipio" value={selectedAsset.properties.municipalityName ?? '-'} />
+          <Metric label="Município" value={selectedAsset.properties.municipalityName ?? '-'} />
           <Metric label="Estado" value={selectedAsset.properties.municipalityState ?? '-'} />
           <Metric label="Longitude" value={selectedAsset.geometry.coordinates[0].toFixed(5)} />
           <Metric label="Latitude" value={selectedAsset.geometry.coordinates[1].toFixed(5)} />
+          <Metric
+            label="Elevação"
+            value={
+              selectedAssetElevationMeters === null
+                ? '-'
+                : `${selectedAssetElevationMeters.toFixed(1)} m`
+            }
+          />
         </div>
+        <Alert>
+          Modo urbano ativo em zoom alto: prédios próximos ao ativo ou à cobertura podem ser
+          destacados no mapa.
+        </Alert>
       </section>
 
       <section className="grid gap-3">
@@ -724,7 +905,7 @@ function DetailsTab({
             value={getCoverageGeometryLabel(selectedAsset, isSelectedCoverageVisible)}
           />
           <Metric
-            label="Vertices"
+            label="Vértices"
             value={
               selectedAsset.properties.coverageArea
                 ? String(selectedAsset.properties.coverageArea.coordinates[0].length)
@@ -740,7 +921,7 @@ function DetailsTab({
         <div className="grid grid-cols-2 gap-2">
           <Button variant="outline" type="button" onClick={onFocusCoverage}>
             <Crosshair size={15} />
-            Focar area
+            Focar área
           </Button>
           <Button variant="success" type="button" onClick={onOpenData}>
             <Database size={15} />
@@ -751,13 +932,32 @@ function DetailsTab({
           <MapPinned size={15} />
           Abrir controles de cobertura
         </Button>
+        <Button
+          variant="outline"
+          type="button"
+          disabled={isochroneStatus === 'loading'}
+          onClick={onLoadIsochrone}
+        >
+          <MapPinned size={15} />
+          {isochroneStatus === 'loading'
+            ? 'Calculando alcance de carro'
+            : 'Alcance 15/30 min de carro'}
+        </Button>
+        {isochroneStatus === 'complete' && (
+          <Alert>Alcance de deslocamento de carro renderizado no mapa.</Alert>
+        )}
+        {isochroneStatus === 'failed' && (
+          <Alert className="border-red-200 bg-red-50 text-red-700">
+            Falha ao calcular alcance de carro: {isochroneError ?? 'erro desconhecido'}
+          </Alert>
+        )}
       </section>
 
       <section className="grid gap-2">
-        <h2 className={sectionTitleClassName}>Descricao</h2>
+        <h2 className={sectionTitleClassName}>Descrição</h2>
         <p className="m-0 text-sm leading-relaxed text-slate-600">
           {selectedAsset.properties.description ??
-            'Ativo meteorologico cadastrado para validacao da POC geoespacial.'}
+            'Ativo meteorológico cadastrado para validação da POC geoespacial.'}
         </p>
       </section>
     </div>
@@ -790,7 +990,7 @@ function CreateTab({
       <Alert>{formStatus}</Alert>
 
       <section className="grid gap-3">
-        <h2 className={sectionTitleClassName}>Identificacao</h2>
+        <h2 className={sectionTitleClassName}>Identificação</h2>
         <label className="grid gap-1.5 font-bold text-slate-700">
           Nome
           <input
@@ -802,11 +1002,11 @@ function CreateTab({
                 name: event.target.value,
               }))
             }
-            placeholder="Estacao Meteorologica 91"
+            placeholder="Estação Meteorológica 91"
           />
         </label>
         <label className="grid gap-1.5 font-bold text-slate-700">
-          Descricao
+          Descrição
           <textarea
             className="min-h-20 w-full resize-y rounded-md border border-slate-300 bg-white px-2.5 py-2 text-sm font-normal text-slate-900"
             value={form.description}
@@ -822,10 +1022,10 @@ function CreateTab({
       </section>
 
       <section className="grid gap-3">
-        <h2 className={sectionTitleClassName}>Classificacao</h2>
+        <h2 className={sectionTitleClassName}>Classificação</h2>
         <div className="grid grid-cols-2 gap-3">
           <label className="grid gap-1.5">
-            <span className={labelClassName}>Municipio</span>
+            <span className={labelClassName}>Município</span>
             <select
               className={formControlClassName}
               value={form.municipalityId}
@@ -857,22 +1057,22 @@ function CreateTab({
                 }))
               }
             >
-              <option value="NOT_STARTED">Nao Iniciado</option>
+              <option value="NOT_STARTED">Não iniciado</option>
               <option value="STARTED">Iniciado</option>
-              <option value="CONCLUDED">Concluido</option>
+              <option value="CONCLUDED">Concluído</option>
             </select>
           </label>
         </div>
       </section>
 
       <section className="grid gap-3">
-        <h2 className={sectionTitleClassName}>Localizacao</h2>
+        <h2 className={sectionTitleClassName}>Localização</h2>
         <div className="grid grid-cols-2 gap-3">
           <Metric label="Longitude" value={selectedPoint ? selectedPoint[0].toFixed(5) : '-'} />
           <Metric label="Latitude" value={selectedPoint ? selectedPoint[1].toFixed(5) : '-'} />
           <Metric
             label="Cobertura"
-            value={coverageArea ? `${getCoverageVerticesCount(coverageArea)} vertices` : '-'}
+            value={coverageArea ? `${getCoverageVerticesCount(coverageArea)} vértices` : '-'}
           />
           <Metric label="SRID" value="4326" />
         </div>
@@ -897,6 +1097,8 @@ function CoverageTab({
   coverageVerticesCount,
   formStatus,
   isDrawingCoverage,
+  isEditingExistingCoverage,
+  isSavingCoverageEdit,
   isSelectedCoverageVisible,
   isSubmitting,
   selectedAsset,
@@ -904,7 +1106,9 @@ function CoverageTab({
   onClearCoverage,
   onFinishCoverageDraw,
   onFocusCoverage,
+  onSaveCoverageEdit,
   onStartCoverageDraw,
+  onStartSelectedCoverageEdit,
   onSubmit,
   onToggleSelectedCoverage,
 }: {
@@ -912,6 +1116,8 @@ function CoverageTab({
   coverageVerticesCount: number;
   formStatus: string;
   isDrawingCoverage: boolean;
+  isEditingExistingCoverage: boolean;
+  isSavingCoverageEdit: boolean;
   isSelectedCoverageVisible: boolean;
   isSubmitting: boolean;
   selectedAsset: MeteorologyAssetPointFeature | null;
@@ -919,7 +1125,9 @@ function CoverageTab({
   onClearCoverage: () => void;
   onFinishCoverageDraw: () => void;
   onFocusCoverage: () => void;
+  onSaveCoverageEdit: () => void;
   onStartCoverageDraw: () => void;
+  onStartSelectedCoverageEdit: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onToggleSelectedCoverage: (visible: boolean) => void;
 }) {
@@ -957,6 +1165,28 @@ function CoverageTab({
             Limpar
           </Button>
         </div>
+        {selectedAsset && !selectedPoint && (
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="secondary"
+              type="button"
+              disabled={Boolean(coverageArea) || isDrawingCoverage}
+              onClick={onStartSelectedCoverageEdit}
+            >
+              <PenTool size={15} />
+              Redesenhar atual
+            </Button>
+            <Button
+              variant="success"
+              type="button"
+              disabled={!coverageArea || !isEditingExistingCoverage || isSavingCoverageEdit}
+              onClick={onSaveCoverageEdit}
+            >
+              <Save size={15} />
+              {isSavingCoverageEdit ? 'Salvando' : 'Salvar cobertura'}
+            </Button>
+          </div>
+        )}
       </section>
 
       <section className="grid gap-3">
@@ -967,8 +1197,8 @@ function CoverageTab({
           onCheckedChange={onToggleSelectedCoverage}
         />
         <div className="grid grid-cols-2 gap-3">
-          <Metric label="Novo ativo" value={coverageArea ? 'Area pronta' : 'Pendente'} />
-          <Metric label="Vertices" value={coverageArea ? String(coverageVerticesCount) : '-'} />
+          <Metric label="Novo ativo" value={coverageArea ? 'Área pronta' : 'Pendente'} />
+          <Metric label="Vértices" value={coverageArea ? String(coverageVerticesCount) : '-'} />
           <Metric
             label="Ativo selecionado"
             value={selectedAsset?.properties.coverageArea ? 'Com cobertura' : '-'}
@@ -1012,14 +1242,14 @@ function CoverageVisibilityToggle({
       <div className="flex min-w-0 items-center gap-2">
         <Icon className={checked ? 'text-blue-700' : 'text-slate-400'} size={16} />
         <div className="grid min-w-0 gap-0.5">
-          <span className="text-sm font-bold text-slate-900">Area delimitada</span>
+          <span className="text-sm font-bold text-slate-900">Área delimitada</span>
           <span className="truncate text-[11px] font-medium text-slate-500">
-            {checked ? 'Visivel no mapa' : 'Oculta no mapa'}
+            {checked ? 'Visível no mapa' : 'Oculta no mapa'}
           </span>
         </div>
       </div>
       <Switch
-        aria-label={checked ? 'Ocultar area delimitada' : 'Mostrar area delimitada'}
+        aria-label={checked ? 'Ocultar área delimitada' : 'Mostrar área delimitada'}
         checked={checked}
         disabled={disabled}
         onCheckedChange={onCheckedChange}
@@ -1051,7 +1281,7 @@ function DataTab({
     <div className="grid gap-5">
       <section className="grid gap-3">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-          <h2 className={cn(sectionTitleClassName, 'pt-1 text-base')}>Cruzamento socioeconomico</h2>
+          <h2 className={cn(sectionTitleClassName, 'pt-1 text-base')}>Cruzamento socioeconômico</h2>
           <Button
             size="sm"
             type="button"
@@ -1073,23 +1303,23 @@ function DataTab({
 
         {!isCoverageDataLoading && coverageSocioeconomicData && (
           <div className="grid gap-5">
-            <div className="grid grid-cols-2 gap-3 max-[340px]:grid-cols-1">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(132px,1fr))] gap-3">
               <MetricTrend
-                label="Areas Cruzadas"
+                label="Áreas Cruzadas"
                 value={integerFormatter.format(coverageSocioeconomicData.externalAreasCount)}
               />
               <MetricTrend
-                label="Populacao Total"
+                label="População Total"
                 value={integerFormatter.format(coverageSocioeconomicData.totalPopulation)}
               />
               <MetricTrend
-                label="Renda Media"
+                label="Renda Média"
                 value={currencyFormatter.format(coverageSocioeconomicData.averageMonthlyIncome)}
               />
             </div>
 
             <section className="grid gap-2">
-              <h3 className={sectionTitleClassName}>Areas socioeconomicas</h3>
+              <h3 className={sectionTitleClassName}>Áreas socioeconômicas</h3>
               {coverageSocioeconomicData.areas.length > 0 ? (
                 <div className="grid max-h-[280px] gap-2 overflow-y-auto pr-1">
                   {coverageSocioeconomicData.areas.map((area) => (
@@ -1103,7 +1333,7 @@ function DataTab({
                             {area.name}
                           </strong>
                           <span className="text-[11px] font-semibold text-slate-500">
-                            {area.state ?? 'UF nao informada'}
+                            {area.state ?? 'UF não informada'}
                           </span>
                         </div>
                         <Badge className="shrink-0 bg-emerald-100 text-emerald-800">
@@ -1123,7 +1353,7 @@ function DataTab({
                   ))}
                 </div>
               ) : (
-                <Alert>Nenhuma area socioeconomica foi coberta por este poligono.</Alert>
+                <Alert>Nenhuma área socioeconômica foi coberta por este polígono.</Alert>
               )}
             </section>
           </div>
@@ -1167,7 +1397,7 @@ function ModelTab({
           <h2 className={sectionTitleClassName}>Modelo 3D</h2>
           <Button variant="outline" size="sm" type="button" onClick={onResetModelCalibration}>
             <RotateCcw size={15} />
-            Reset
+            Redefinir
           </Button>
         </div>
 
@@ -1194,20 +1424,20 @@ function ModelTab({
 
         {!selectedAsset && (
           <Alert>
-            Selecione um ativo para medir o modelo individual. Ativos do Para usam a camada 3D
+            Selecione um ativo para medir o modelo individual. Ativos de São Paulo usam a camada 3D
             agregada.
           </Alert>
         )}
 
         {modelPerformance.status === 'failed' && (
           <Alert className="border-red-200 bg-red-50 text-red-700">
-            {modelPerformance.errorMessage ?? 'Nao foi possivel carregar o arquivo GLB.'}
+            {modelPerformance.errorMessage ?? 'Não foi possível carregar o arquivo GLB.'}
           </Alert>
         )}
       </section>
 
       <section className="grid gap-3">
-        <h2 className={sectionTitleClassName}>Calibracao</h2>
+        <h2 className={sectionTitleClassName}>Calibração</h2>
         <div className="grid gap-2">
           {calibrationFields.map((field) => (
             <label className="grid gap-1" key={field.key}>
@@ -1268,10 +1498,19 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function MetricTrend({ label, value }: { label: string; value: string }) {
+  const isCurrencyValue = value.includes('R$');
+
   return (
-    <div className="grid min-h-[82px] min-w-0 gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-      <span className="min-w-0 truncate text-[11px] font-medium text-slate-600">{label}</span>
-      <strong className="min-w-0 break-words text-[17px] leading-tight font-extrabold text-slate-950 tabular-nums">
+    <div className="grid min-h-[92px] min-w-0 content-between gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+      <span className="min-w-0 text-[11px] leading-snug font-medium text-slate-600">{label}</span>
+      <strong
+        className={cn(
+          'min-w-0 text-slate-950 tabular-nums',
+          isCurrencyValue
+            ? 'whitespace-nowrap text-[15px] leading-none font-extrabold tracking-normal'
+            : 'break-words text-[18px] leading-tight font-extrabold',
+        )}
+      >
         {value}
       </strong>
     </div>

@@ -23,6 +23,29 @@ export type PolygonGeometry = {
   coordinates: [Array<[number, number]>];
 };
 
+export type GeoJsonFeatureCollection<TGeometry, TProperties = Record<string, unknown>> = {
+  type: 'FeatureCollection';
+  features: Array<{
+    type: 'Feature';
+    geometry: TGeometry;
+    properties: TProperties;
+  }>;
+};
+
+export type IsochroneFeatureCollection = GeoJsonFeatureCollection<
+  PolygonGeometry,
+  {
+    contour?: number;
+    color?: string;
+    opacity?: number;
+  }
+>;
+
+export type LocationSearchResult = {
+  label: string;
+  coordinates: [number, number];
+};
+
 export type MeteorologyAssetGeoJsonProperties = {
   id: number;
   infrastructurePointId: number;

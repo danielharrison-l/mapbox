@@ -165,9 +165,9 @@ export function getErrorMessage(error: unknown): string {
 
 export function getStatusLabel(status: MeteorologyAssetStatus): string {
   const labels: Record<MeteorologyAssetStatus, string> = {
-    NOT_STARTED: 'Nao Iniciado',
+    NOT_STARTED: 'Não iniciado',
     STARTED: 'Iniciado',
-    CONCLUDED: 'Concluido',
+    CONCLUDED: 'Concluído',
   };
 
   return labels[status];
