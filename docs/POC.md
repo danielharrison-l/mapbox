@@ -1,21 +1,21 @@
 Documentar uma POC em **repo independente** para validar:
 
-- Mapbox para visualizacao interativa dos ativos;
+- Mapbox para visualização interativa dos ativos;
 - PostGIS para armazenamento e consultas geoespaciais;
-- importacao de KML (QGIS);
-- desenho de poligonos via Mapbox Draw;
-- cenario com ponto do ativo + area de cobertura do ativo.
+- importação de KML (QGIS);
+- desenho de polígonos via Mapbox Draw;
+- cenário com ponto do ativo + área de cobertura do ativo.
 
-## 2) Premissas Tecnicas
+## 2) Premissas Técnicas
 
-1. SRID padrao da POC: **4326** (WGS84) em todas as geometrias.
-2. Nao usar `4674` nesta POC.
-3. Cada ativo de meteorologia tera:
-- localizacao do ativo como ponto (`POINT`);
-- status do entregavel;
-- area de cobertura como `POLYGON`/`MULTIPOLYGON` (quando houver).
-4. O municipio do ponto sera obrigatorio para permitir filtro por UF sem redundancia.
-5. O ID do ativo especializado sera o mesmo ID da tabela base:
+1. SRID padrão da POC: **4326** (WGS84) em todas as geometrias.
+2. Não usar `4674` nesta POC.
+3. Cada ativo de meteorologia terá:
+- localização do ativo como ponto (`POINT`);
+- status do entregável;
+- área de cobertura como `POLYGON`/`MULTIPOLYGON` (quando houver).
+4. O município do ponto será obrigatório para permitir filtro por UF sem redundância.
+5. O ID do ativo especializado será o mesmo ID da tabela base:
 - `meteorology_asset.infrastructure_point_id = infrastructure_point.id`.
 
 ## 3) Modelo de Dados da POC
@@ -32,11 +32,11 @@ CREATE TYPE meteorology_status_enum AS ENUM (
 
 Mapeamento:
 
-- `NOT_STARTED` = Nao Iniciado
+- `NOT_STARTED` = Não iniciado
 - `STARTED` = Iniciado
-- `COMPLETED` = Concluido
+- `COMPLETED` = Concluído
 
-### 3.2 Municipio (base territorial opcional para filtro/consulta)
+### 3.2 Município (base territorial opcional para filtro/consulta)
 
 ```sql
 CREATE TABLE IF NOT EXISTS municipality
@@ -118,16 +118,16 @@ CREATE INDEX IF NOT EXISTS idx_meteorology_asset_coverage_geom
     ON meteorology_asset USING GIST (coverage_geometry);
 ```
 
-## 4) Estrategia para cobertura entre municipios
+## 4) Estratégia para cobertura entre municípios
 
-Nesta POC, a cobertura **nao e rateio por municipio**. Ela serve apenas para representar no mapa a area atendida/impactada pelo ativo.
+Nesta POC, a cobertura **não é rateio por município**. Ela serve apenas para representar no mapa a área atendida/impactada pelo ativo.
 
 Regra simples:
 
 1. O ativo continua sendo um ponto em `infrastructure_point.geometry`.
 2. A cobertura fica em `meteorology_asset.coverage_geometry`.
-3. Se a cobertura cruzar 1, 2 ou 3 municipios, isso e natural e permitido.
-4. Quando precisar saber municipios afetados, faz consulta espacial sob demanda (`ST_Intersects`), sem persistir area de interseccao.
+3. Se a cobertura cruzar 1, 2 ou 3 municípios, isso é natural e permitido.
+4. Quando precisar saber municípios afetados, faz consulta espacial sob demanda (`ST_Intersects`), sem persistir área de interseção.
 
 Exemplo de consulta sob demanda:
 
@@ -143,7 +143,7 @@ JOIN municipality m
 WHERE ma.infrastructure_point_id = :asset_id;
 ```
 
-## 5) Exemplo de entidade JPA (padrao `@MapsId`)
+## 5) Exemplo de entidade JPA (padrão `@MapsId`)
 
 ```java
 @Entity
@@ -176,22 +176,22 @@ public class MeteorologyAssetEntity extends AuditableJpaEntity<UUID> {
 }
 ```
 
-### Relacao de IDs
+### Relação de IDs
 
 - Cria primeiro em `infrastructure_point` -> gera `id`.
 - Usa esse mesmo `id` em `meteorology_asset.infrastructure_point_id`.
-- `infrastructure_point_id` e PK + FK da tabela especializada.
+- `infrastructure_point_id` é PK + FK da tabela especializada.
 
 ## 6) Fluxo funcional da POC
 
-1. Importacao KML (QGIS):
+1. Importação KML (QGIS):
 - endpoint recebe `.kml`;
 - parser converte para WKT/GeoJSON;
 - grava ponto em `infrastructure_point.geometry`;
 - grava cobertura (quando existir) em `meteorology_asset.coverage_geometry`.
 
 2. Draw no Mapbox:
-- usuario desenha poligono;
+- usuário desenha polígono;
 - frontend envia GeoJSON;
 - backend converte para `geometry(4326)` e atualiza `coverage_geometry`.
 
@@ -211,12 +211,12 @@ INSERT INTO infrastructure_point (
 ) VALUES (
     '8fca390a-e775-4ea9-a0ac-0534f248d3ea',
     '34d598b5-8712-4d2d-a47d-031ce04efe22',
-    'Estacao Meteo - PA 001',
-    'Ativo de referencia da POC',
+    'Estação Meteo - PA 001',
+    'Ativo de referência da POC',
     ST_GeomFromText('POINT(-48.4902 -1.4558)', 4326)
 );
 
--- 2) especializacao meteorologica com o MESMO id
+-- 2) especialização meteorológica com o MESMO id
 INSERT INTO meteorology_asset (
     infrastructure_point_id, station_code, status, coverage_source, coverage_geometry
 ) VALUES (
@@ -253,14 +253,14 @@ GROUP BY ma.infrastructure_point_id, ma.station_code;
 
 ## 9) Checklist objetivo da POC
 
-- [ ] Cadastrar 90 ativos meteorologicos com ponto (4326)
+- [ ] Cadastrar 90 ativos meteorológicos com ponto (4326)
 - [ ] Garantir filtro por estado e status
 - [ ] Importar pelo menos 1 KML com sucesso
 - [ ] Desenhar e persistir cobertura via Mapbox Draw
-- [ ] Exibir cobertura mesmo cruzando mais de um municipio
-- [ ] Executar 1 consulta de intersecao PostGIS com dado externo
-- [ ] Validar renderizacao de 1 modelo 3D
+- [ ] Exibir cobertura mesmo cruzando mais de um município
+- [ ] Executar 1 consulta de interseção PostGIS com dado externo
+- [ ] Validar renderização de 1 modelo 3D
 
 ---
 
-Resumo: POC independente, simples, com `POINT` para localizacao do ativo e `POLYGON/MULTIPOLYGON` para representar cobertura, ambos em SRID 4326.
+Resumo: POC independente, simples, com `POINT` para localização do ativo e `POLYGON/MULTIPOLYGON` para representar cobertura, ambos em SRID 4326.
