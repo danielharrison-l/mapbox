@@ -41,12 +41,9 @@ import {
   upsertSelectedPointLayer,
 } from './lib/mapbox';
 import {
-  isStateModelAsset,
   measureMapFrameRate,
-  removeSelectedAsset3dModel,
   removeStateAsset3dModels,
   STATE_ASSETS_3D_MODEL_LAYER_ID,
-  upsertSelectedAsset3dModel,
   upsertStateAsset3dModels,
 } from './lib/mapbox-3d';
 import type {
@@ -85,7 +82,7 @@ const emptyAssetsGeoJson: MeteorologyAssetsPointCollection = {
 
 const ASSET_CLICK_HITBOX_PX = 22;
 const MODEL_CLICK_HITBOX_PX = 28;
-const selectedAssetModelUrl = import.meta.env.VITE_3D_MODEL_URL ?? '/models/tower.glb';
+const stateModelPerformanceUrl = 'mocked-state-glbs';
 
 const initialModelCalibration: ModelCalibration = {
   offsetEastMeters: 0,
@@ -101,7 +98,7 @@ function createModelPerformance(status: ModelPerformance['status']): ModelPerfor
   return {
     status,
     assetId: null,
-    modelUrl: selectedAssetModelUrl,
+    modelUrl: stateModelPerformanceUrl,
     durationMs: null,
     frames: null,
     averageFps: null,
@@ -695,18 +692,6 @@ function App() {
     };
 
     const selectRenderedAsset = (assetFeature: MeteorologyAssetPointFeature) => {
-      if (isStateModelAsset(assetFeature)) {
-        setSelectedAsset(assetFeature);
-        setIsEditingExistingCoverage(false);
-        setSidebarMode('model');
-        clearDrawnCoverageAreaRef.current();
-        setSelectedPoint(null);
-        upsertSelectedPointLayer(map, null);
-        upsertSelectedCoverageLayer(map, selectedCoverageVisibleRef.current ? assetFeature : null);
-        upsertSelectedAssetLayer(map, assetFeature);
-        return;
-      }
-
       setSelectedAsset(assetFeature);
       setIsEditingExistingCoverage(false);
       setSidebarMode('details');
@@ -737,19 +722,11 @@ function App() {
         { layers },
       );
 
-    const findNearestAssetAtPoint = (
-      point: mapboxgl.Point,
-      hitbox: number,
-      predicate: (asset: MeteorologyAssetPointFeature) => boolean = () => true,
-    ) => {
+    const findNearestAssetAtPoint = (point: mapboxgl.Point, hitbox: number) => {
       let nearestAsset: MeteorologyAssetPointFeature | null = null;
       let nearestDistance = Number.POSITIVE_INFINITY;
 
       for (const assetFeature of assetsByInfrastructurePointIdRef.current.values()) {
-        if (!predicate(assetFeature)) {
-          continue;
-        }
-
         const projectedPoint = map.project(assetFeature.geometry.coordinates);
         const distance = Math.hypot(projectedPoint.x - point.x, projectedPoint.y - point.y);
 
@@ -813,16 +790,6 @@ function App() {
             STATE_ASSETS_3D_MODEL_LAYER_ID,
           ])
         : [];
-      const nearestStateAsset = findNearestAssetAtPoint(
-        event.point,
-        MODEL_CLICK_HITBOX_PX,
-        isStateModelAsset,
-      );
-
-      if (nearestStateAsset) {
-        selectRenderedAsset(nearestStateAsset);
-        return;
-      }
 
       if (modelFeatures.length > 0) {
         setSidebarMode('model');
@@ -941,8 +908,12 @@ function App() {
       return;
     }
 
-    const stateAssets = upsertStateAsset3dModels(map, assetsGeoJson, {
-      modelUrl: selectedAssetModelUrl,
+    modelMeasurementSequenceRef.current += 1;
+    const sequence = modelMeasurementSequenceRef.current;
+
+    setModelPerformance(createModelPerformance('measuring'));
+
+    const stateModels = upsertStateAsset3dModels(map, {
       scale: [modelCalibration.scaleX, modelCalibration.scaleY, modelCalibration.scaleZ],
       rotation: [0, 0, modelCalibration.rotationZ],
       offsetMeters: {
@@ -953,24 +924,48 @@ function App() {
       minZoom: 15,
       onReady: () => {
         void measureMapFrameRate(5000).then((measurement) => {
+          if (sequence !== modelMeasurementSequenceRef.current) {
+            return;
+          }
+
+          setModelPerformance({
+            status: 'complete',
+            assetId: null,
+            modelUrl: stateModelPerformanceUrl,
+            durationMs: measurement.durationMs,
+            frames: measurement.frames,
+            averageFps: measurement.averageFps,
+            maxFrameTimeMs: measurement.maxFrameTimeMs,
+            measuredAt: measurement.measuredAt,
+            errorMessage: null,
+          });
+
           console.info('Configured state 3D model performance', {
-            modelUrl: selectedAssetModelUrl,
-            assetsCount: stateAssets.length,
+            modelUrl: stateModelPerformanceUrl,
+            modelsCount: stateModels.length,
             ...measurement,
           });
         });
       },
       onError: (error) => {
+        if (sequence !== modelMeasurementSequenceRef.current) {
+          return;
+        }
+
+        setModelPerformance({
+          ...createModelPerformance('failed'),
+          errorMessage: getErrorMessage(error),
+        });
         console.error('Failed to render configured state 3D models', error);
       },
     });
 
-    if (stateAssets.length > 0 && !hasFocusedStateModelsRef.current) {
-      const firstStateAsset = stateAssets[0];
+    if (stateModels.length > 0 && !hasFocusedStateModelsRef.current) {
+      const firstStateModel = stateModels[0];
       hasFocusedStateModelsRef.current = true;
 
       map.easeTo({
-        center: firstStateAsset.geometry.coordinates,
+        center: firstStateModel.coordinates,
         zoom: 15.27,
         pitch: 42,
         bearing: -50,
@@ -983,91 +978,7 @@ function App() {
         removeStateAsset3dModels(mapRef.current);
       }
     };
-  }, [assetsGeoJson, isMapLoaded, modelCalibration]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    modelMeasurementSequenceRef.current += 1;
-    const sequence = modelMeasurementSequenceRef.current;
-
-    if (!isMapLoaded || !map || !selectedAsset) {
-      if (map) {
-        removeSelectedAsset3dModel(map);
-      }
-
-      setModelPerformance(createModelPerformance('idle'));
-      return;
-    }
-
-    setModelPerformance({
-      ...createModelPerformance('measuring'),
-      assetId: selectedAsset.properties.infrastructurePointId,
-    });
-
-    upsertSelectedAsset3dModel(map, selectedAsset, {
-      modelUrl: selectedAssetModelUrl,
-      scale: [modelCalibration.scaleX, modelCalibration.scaleY, modelCalibration.scaleZ],
-      rotation: [0, 0, modelCalibration.rotationZ],
-      offsetMeters: {
-        east: modelCalibration.offsetEastMeters,
-        north: modelCalibration.offsetNorthMeters,
-      },
-      clipRadiusMeters: modelCalibration.clipRadiusMeters,
-      minZoom: 15,
-      onReady: () => {
-        if (sequence !== modelMeasurementSequenceRef.current) {
-          return;
-        }
-
-        void measureMapFrameRate(5000)
-          .then((measurement) => {
-            if (sequence !== modelMeasurementSequenceRef.current) {
-              return;
-            }
-
-            setModelPerformance({
-              status: 'complete',
-              assetId: selectedAsset.properties.infrastructurePointId,
-              modelUrl: selectedAssetModelUrl,
-              durationMs: measurement.durationMs,
-              frames: measurement.frames,
-              averageFps: measurement.averageFps,
-              maxFrameTimeMs: measurement.maxFrameTimeMs,
-              measuredAt: measurement.measuredAt,
-              errorMessage: null,
-            });
-          })
-          .catch((error: unknown) => {
-            if (sequence !== modelMeasurementSequenceRef.current) {
-              return;
-            }
-
-            setModelPerformance({
-              ...createModelPerformance('failed'),
-              assetId: selectedAsset.properties.infrastructurePointId,
-              errorMessage: getErrorMessage(error),
-            });
-          });
-      },
-      onError: (error) => {
-        if (sequence !== modelMeasurementSequenceRef.current) {
-          return;
-        }
-
-        setModelPerformance({
-          ...createModelPerformance('failed'),
-          assetId: selectedAsset.properties.infrastructurePointId,
-          errorMessage: getErrorMessage(error),
-        });
-      },
-    });
-
-    return () => {
-      if (mapRef.current) {
-        removeSelectedAsset3dModel(mapRef.current);
-      }
-    };
-  }, [isMapLoaded, modelCalibration, selectedAsset]);
+  }, [isMapLoaded, modelCalibration]);
 
   useEffect(() => {
     if (selectedAsset && !assetMatchesFilters(selectedAsset, filters)) {
@@ -1454,7 +1365,7 @@ function App() {
 
     setSelectedAsset(assetFeature);
     setIsEditingExistingCoverage(false);
-    setSidebarMode(isStateModelAsset(assetFeature) ? 'model' : 'details');
+    setSidebarMode('details');
     clearDrawnCoverageAreaRef.current();
     setSelectedPoint(null);
 

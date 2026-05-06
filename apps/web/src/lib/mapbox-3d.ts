@@ -1,9 +1,5 @@
 import mapboxgl from 'mapbox-gl';
-import type {
-  MeteorologyAssetPointFeature,
-  MeteorologyAssetsPointCollection,
-  PolygonGeometry,
-} from '../types/geo';
+import type { PolygonGeometry } from '../types/geo';
 
 export const STATE_ASSETS_3D_CLIP_LAYER_ID = 'state-assets-3d-clip';
 export const STATE_ASSETS_3D_MODEL_LAYER_ID = 'state-assets-3d-model';
@@ -14,10 +10,41 @@ const STATE_ASSETS_3D_CLIP_SOURCE_ID = 'state-assets-3d-clip';
 const STATE_ASSETS_3D_MODEL_SOURCE_ID = 'state-assets-3d-model';
 const SELECTED_ASSET_3D_CLIP_SOURCE_ID = 'selected-asset-3d-clip';
 const SELECTED_ASSET_3D_MODEL_SOURCE_ID = 'selected-asset-3d-model';
-const MODEL_ASSET_STATES = new Set(['MG', 'PA', 'SP']);
+
+export type MockedStateGlbModel = {
+  id: string;
+  name: string;
+  state: 'MG' | 'PA' | 'SP';
+  coordinates: [number, number];
+  modelUrl: string;
+};
+
+export const MOCKED_STATE_GLB_MODELS: MockedStateGlbModel[] = [
+  {
+    id: 'pa-belem-glb',
+    name: 'GLB mockado - Para',
+    state: 'PA',
+    coordinates: [-48.4896, -1.4526],
+    modelUrl: '/models/para.glb',
+  },
+  {
+    id: 'mg-belo-horizonte-glb',
+    name: 'GLB mockado - Minas Gerais',
+    state: 'MG',
+    coordinates: [-43.9345, -19.9167],
+    modelUrl: '/models/minas-gerais.glb',
+  },
+  {
+    id: 'sp-sao-paulo-glb',
+    name: 'GLB mockado - Sao Paulo',
+    state: 'SP',
+    coordinates: [-46.6333, -23.5505],
+    modelUrl: '/models/sao-paulo.glb',
+  },
+];
 
 type Asset3dModelOptions = {
-  modelUrl: string;
+  modelUrl?: string;
   scale?: [number, number, number];
   rotation?: [number, number, number];
   offsetMeters?: {
@@ -47,6 +74,9 @@ type ModelPointGeometry = {
 };
 
 type ModelPointProperties = {
+  id: string;
+  name: string;
+  state: MockedStateGlbModel['state'];
   'model-uri': string;
 };
 
@@ -96,11 +126,11 @@ function applyMeterOffset(
 }
 
 function createClipPolygon(
-  asset: MeteorologyAssetPointFeature,
+  model: MockedStateGlbModel,
   radiusMeters: number,
   offsetMeters: Asset3dModelOptions['offsetMeters'],
 ): GeoJsonFeature<PolygonGeometry, Record<string, never>> {
-  const [lng, lat] = applyMeterOffset(asset.geometry.coordinates, offsetMeters);
+  const [lng, lat] = applyMeterOffset(model.coordinates, offsetMeters);
   const latOffset = radiusMeters / 111_320;
   const lngOffset = radiusMeters / (111_320 * Math.max(Math.cos((lat * Math.PI) / 180), 0.1));
 
@@ -123,33 +153,34 @@ function createClipPolygon(
 }
 
 function createClipSourceData(
-  assets: MeteorologyAssetPointFeature[],
+  models: MockedStateGlbModel[],
   radiusMeters: number,
   offsetMeters: Asset3dModelOptions['offsetMeters'],
 ): ClipPolygonCollection {
   return {
     type: 'FeatureCollection',
-    features: assets.map((asset) => createClipPolygon(asset, radiusMeters, offsetMeters)),
+    features: models.map((model) => createClipPolygon(model, radiusMeters, offsetMeters)),
   };
 }
 
 function createModelSourceData(
-  assets: MeteorologyAssetPointFeature[],
-  modelUrl: string,
+  models: MockedStateGlbModel[],
+  fallbackModelUrl: string | undefined,
   offsetMeters: Asset3dModelOptions['offsetMeters'],
 ): ModelPointCollection {
-  const modelUri = resolveModelUrl(modelUrl);
-
   return {
     type: 'FeatureCollection',
-    features: assets.map((asset) => ({
+    features: models.map((model) => ({
       type: 'Feature',
       properties: {
-        'model-uri': modelUri,
+        id: model.id,
+        name: model.name,
+        state: model.state,
+        'model-uri': resolveModelUrl(fallbackModelUrl ?? model.modelUrl),
       },
       geometry: {
         type: 'Point',
-        coordinates: applyMeterOffset(asset.geometry.coordinates, offsetMeters),
+        coordinates: applyMeterOffset(model.coordinates, offsetMeters),
       },
     })),
   };
@@ -157,7 +188,7 @@ function createModelSourceData(
 
 function addClipAndModelLayers(
   map: mapboxgl.Map,
-  assets: MeteorologyAssetPointFeature[],
+  models: MockedStateGlbModel[],
   ids: {
     clipLayerId: string;
     clipSourceId: string;
@@ -168,12 +199,12 @@ function addClipAndModelLayers(
 ) {
   map.addSource(ids.clipSourceId, {
     type: 'geojson',
-    data: createClipSourceData(assets, options.clipRadiusMeters ?? 120, options.offsetMeters),
+    data: createClipSourceData(models, options.clipRadiusMeters ?? 120, options.offsetMeters),
   });
 
   map.addSource(ids.modelSourceId, {
     type: 'geojson',
-    data: createModelSourceData(assets, options.modelUrl, options.offsetMeters),
+    data: createModelSourceData(models, options.modelUrl, options.offsetMeters),
   });
 
   map.addLayer({
@@ -209,30 +240,17 @@ function addClipAndModelLayers(
   map.triggerRepaint();
 }
 
-export function isStateModelAsset(asset: MeteorologyAssetPointFeature) {
-  const state = asset.properties.municipalityState;
-
-  return Boolean(state && MODEL_ASSET_STATES.has(state));
-}
-
-export function getStateModelAssets(assetsGeoJson: MeteorologyAssetsPointCollection) {
-  return assetsGeoJson.features.filter(isStateModelAsset);
-}
-
-export function getAssetBounds(assets: MeteorologyAssetPointFeature[]) {
-  const firstAsset = assets[0];
+export function getAssetBounds(models: MockedStateGlbModel[]) {
+  const firstAsset = models[0];
 
   if (!firstAsset) {
     return null;
   }
 
-  const bounds = new mapboxgl.LngLatBounds(
-    firstAsset.geometry.coordinates,
-    firstAsset.geometry.coordinates,
-  );
+  const bounds = new mapboxgl.LngLatBounds(firstAsset.coordinates, firstAsset.coordinates);
 
-  for (const asset of assets.slice(1)) {
-    bounds.extend(asset.geometry.coordinates);
+  for (const model of models.slice(1)) {
+    bounds.extend(model.coordinates);
   }
 
   return bounds;
@@ -245,23 +263,19 @@ export function removeStateAsset3dModels(map: mapboxgl.Map) {
   removeSourceIfExists(map, STATE_ASSETS_3D_CLIP_SOURCE_ID);
 }
 
-export function upsertStateAsset3dModels(
-  map: mapboxgl.Map,
-  assetsGeoJson: MeteorologyAssetsPointCollection,
-  options: Asset3dModelOptions,
-) {
+export function upsertStateAsset3dModels(map: mapboxgl.Map, options: Asset3dModelOptions) {
   removeStateAsset3dModels(map);
 
-  const stateAssets = getStateModelAssets(assetsGeoJson);
+  const stateModels = MOCKED_STATE_GLB_MODELS;
 
-  if (stateAssets.length === 0) {
-    return stateAssets;
+  if (stateModels.length === 0) {
+    return stateModels;
   }
 
   try {
     addClipAndModelLayers(
       map,
-      stateAssets,
+      stateModels,
       {
         clipLayerId: STATE_ASSETS_3D_CLIP_LAYER_ID,
         clipSourceId: STATE_ASSETS_3D_CLIP_SOURCE_ID,
@@ -275,7 +289,7 @@ export function upsertStateAsset3dModels(
     options.onError?.(error);
   }
 
-  return stateAssets;
+  return stateModels;
 }
 
 export function removeSelectedAsset3dModel(map: mapboxgl.Map) {
@@ -287,19 +301,19 @@ export function removeSelectedAsset3dModel(map: mapboxgl.Map) {
 
 export function upsertSelectedAsset3dModel(
   map: mapboxgl.Map,
-  asset: MeteorologyAssetPointFeature | null,
+  model: MockedStateGlbModel | null,
   options: Asset3dModelOptions,
 ) {
   removeSelectedAsset3dModel(map);
 
-  if (!asset) {
+  if (!model) {
     return;
   }
 
   try {
     addClipAndModelLayers(
       map,
-      [asset],
+      [model],
       {
         clipLayerId: SELECTED_ASSET_3D_CLIP_LAYER_ID,
         clipSourceId: SELECTED_ASSET_3D_CLIP_SOURCE_ID,

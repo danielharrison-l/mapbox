@@ -578,7 +578,6 @@ function OperationalSidebarShell({
                   <ModelTab
                     modelCalibration={modelCalibration}
                     modelPerformance={modelPerformance}
-                    selectedAsset={selectedAsset}
                     setModelCalibration={setModelCalibration}
                     onResetModelCalibration={onResetModelCalibration}
                   />
@@ -1380,13 +1379,11 @@ function DataTab({
 function ModelTab({
   modelCalibration,
   modelPerformance,
-  selectedAsset,
   setModelCalibration,
   onResetModelCalibration,
 }: {
   modelCalibration: ModelCalibration;
   modelPerformance: ModelPerformance;
-  selectedAsset: MeteorologyAssetPointFeature | null;
   setModelCalibration: Dispatch<SetStateAction<ModelCalibration>>;
   onResetModelCalibration: () => void;
 }) {
@@ -1422,12 +1419,10 @@ function ModelTab({
           />
         </div>
 
-        {!selectedAsset && (
-          <Alert>
-            Selecione um ativo para medir o modelo individual. Ativos de São Paulo usam a camada 3D
-            agregada.
-          </Alert>
-        )}
+        <Alert>
+          GLBs mockados fixos em PA, MG e SP. Novos ativos meteorológicos não adicionam modelos
+          automaticamente.
+        </Alert>
 
         {modelPerformance.status === 'failed' && (
           <Alert className="border-red-200 bg-red-50 text-red-700">
