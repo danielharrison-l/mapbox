@@ -10,7 +10,7 @@ type HealthcheckResponse = {
 @Controller('health')
 export class HealthcheckController {
   @Get()
-  @ApiOperation({ summary: 'Verifica se a API esta disponivel' })
+  @ApiOperation({ summary: 'Verifica se a API está disponível' })
   @ApiOkResponse({ description: 'Healthcheck executado com sucesso' })
   check(): HealthcheckResponse {
     return {

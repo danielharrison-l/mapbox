@@ -3,12 +3,12 @@ import { MeteorologyAssetStatus } from '../../infrastructure/persistence/entitie
 
 export class CreateMeteorologyAssetRequest {
   @ApiProperty({
-    example: 'Estacao Meteorologica 01',
+    example: 'Estação Meteorológica 01',
   })
   public name!: string;
 
   @ApiProperty({
-    example: 'Asset para monitoramento meteorologico',
+    example: 'Ativo para monitoramento meteorológico',
     required: false,
     nullable: true,
   })

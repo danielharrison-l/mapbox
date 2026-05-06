@@ -6,6 +6,7 @@ import {
   NotFoundException,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -23,6 +24,7 @@ import { CreateMeteorologyAssetUseCase } from '../../application/usecases/create
 import { FindAllMeteorologyAssetsUseCase } from '../../application/usecases/find-all-meteorology-assets.use-case';
 import { FindCoverageSocioeconomicDataUseCase } from '../../application/usecases/find-coverage-socioeconomic-data.use-case';
 import { FindMeteorologyAssetByInfrastructurePointIdUseCase } from '../../application/usecases/find-meteorology-asset-by-infrastructure-point-id.use-case';
+import { UpdateMeteorologyAssetCoverageUseCase } from '../../application/usecases/update-meteorology-asset-coverage.use-case';
 import { isBrazilianState } from '../../domain/brazilian-state';
 import { MeteorologyAssetMapper } from '../../infrastructure/mapper/meteorology-asset.mapper';
 import {
@@ -30,6 +32,7 @@ import {
   MeteorologyAssetStatus,
 } from '../../infrastructure/persistence/entities/meteorology-asset.entity';
 import type { CreateMeteorologyAssetRequest } from '../requests/create-meteorology-asset.request';
+import type { UpdateMeteorologyAssetCoverageRequest } from '../requests/update-meteorology-asset-coverage.request';
 import { CoverageSocioeconomicDataResponse } from '../responses/coverage-socioeconomic-data.response';
 import { MeteorologyAssetGeoJsonResponse } from '../responses/meteorology-asset-geojson.response';
 
@@ -41,6 +44,7 @@ export class MeteorologyAssetController {
     private readonly findAllMeteorologyAssetsUseCase: FindAllMeteorologyAssetsUseCase,
     private readonly findMeteorologyAssetByInfrastructurePointIdUseCase: FindMeteorologyAssetByInfrastructurePointIdUseCase,
     private readonly findCoverageSocioeconomicDataUseCase: FindCoverageSocioeconomicDataUseCase,
+    private readonly updateMeteorologyAssetCoverageUseCase: UpdateMeteorologyAssetCoverageUseCase,
   ) {}
 
   @Get()
@@ -99,7 +103,7 @@ export class MeteorologyAssetController {
 
   @Get('infrastructure-points/:infrastructurePointId/geojson')
   @ApiOperation({
-    summary: 'Busca um asset de meteorologia pelo ponto de infraestrutura em formato GeoJSON',
+    summary: 'Busca um ativo de meteorologia pelo ponto de infraestrutura em formato GeoJSON',
   })
   @ApiParam({
     name: 'infrastructurePointId',
@@ -107,11 +111,11 @@ export class MeteorologyAssetController {
     type: Number,
   })
   @ApiOkResponse({
-    description: 'Asset de meteorologia encontrado em GeoJSON com sucesso',
+    description: 'Ativo de meteorologia encontrado em GeoJSON com sucesso',
     type: MeteorologyAssetGeoJsonResponse,
   })
   @ApiNotFoundResponse({
-    description: 'Asset de meteorologia nao encontrado para o ponto de infraestrutura',
+    description: 'Ativo de meteorologia não encontrado para o ponto de infraestrutura',
   })
   public async findByInfrastructurePointIdAsGeoJson(
     @Param('infrastructurePointId', ParseIntPipe) infrastructurePointId: number,
@@ -123,7 +127,7 @@ export class MeteorologyAssetController {
 
   @Get('infrastructure-points/:infrastructurePointId/coverage-socioeconomic-data')
   @ApiOperation({
-    summary: 'Cruza dados socioeconomicos externos com a area de cobertura do asset',
+    summary: 'Cruza dados socioeconômicos externos com a área de cobertura do ativo',
   })
   @ApiParam({
     name: 'infrastructurePointId',
@@ -131,11 +135,11 @@ export class MeteorologyAssetController {
     type: Number,
   })
   @ApiOkResponse({
-    description: 'Dados socioeconomicos cruzados com a cobertura com sucesso',
+    description: 'Dados socioeconômicos cruzados com a cobertura com sucesso',
     type: CoverageSocioeconomicDataResponse,
   })
   @ApiNotFoundResponse({
-    description: 'Asset de meteorologia nao encontrado para o ponto de infraestrutura',
+    description: 'Ativo de meteorologia não encontrado para o ponto de infraestrutura',
   })
   public async findCoverageSocioeconomicData(
     @Param('infrastructurePointId', ParseIntPipe) infrastructurePointId: number,
@@ -145,7 +149,7 @@ export class MeteorologyAssetController {
 
     if (!coverageSocioeconomicData) {
       throw new NotFoundException(
-        'Asset de meteorologia nao encontrado para o ponto de infraestrutura informado',
+        'Ativo de meteorologia não encontrado para o ponto de infraestrutura informado',
       );
     }
 
@@ -154,7 +158,7 @@ export class MeteorologyAssetController {
 
   @Get('infrastructure-points/:infrastructurePointId')
   @ApiOperation({
-    summary: 'Busca um asset de meteorologia pelo ponto de infraestrutura',
+    summary: 'Busca um ativo de meteorologia pelo ponto de infraestrutura',
   })
   @ApiParam({
     name: 'infrastructurePointId',
@@ -162,16 +166,50 @@ export class MeteorologyAssetController {
     type: Number,
   })
   @ApiOkResponse({
-    description: 'Asset de meteorologia encontrado com sucesso',
+    description: 'Ativo de meteorologia encontrado com sucesso',
     type: MeteorologyAsset,
   })
   @ApiNotFoundResponse({
-    description: 'Asset de meteorologia nao encontrado para o ponto de infraestrutura',
+    description: 'Ativo de meteorologia não encontrado para o ponto de infraestrutura',
   })
   public async findByInfrastructurePointId(
     @Param('infrastructurePointId', ParseIntPipe) infrastructurePointId: number,
   ): Promise<MeteorologyAsset> {
     return this.findByInfrastructurePointIdOrThrow(infrastructurePointId);
+  }
+
+  @Patch('infrastructure-points/:infrastructurePointId/coverage')
+  @ApiOperation({
+    summary: 'Atualiza a área de cobertura de um ativo de meteorologia',
+  })
+  @ApiParam({
+    name: 'infrastructurePointId',
+    description: 'ID do ponto de infraestrutura',
+    type: Number,
+  })
+  @ApiOkResponse({
+    description: 'Área de cobertura atualizada com sucesso',
+    type: MeteorologyAsset,
+  })
+  @ApiNotFoundResponse({
+    description: 'Ativo de meteorologia não encontrado para o ponto de infraestrutura',
+  })
+  public async updateCoverageArea(
+    @Param('infrastructurePointId', ParseIntPipe) infrastructurePointId: number,
+    @Body() body: UpdateMeteorologyAssetCoverageRequest,
+  ): Promise<MeteorologyAsset> {
+    const meteorologyAsset = await this.updateMeteorologyAssetCoverageUseCase.execute({
+      infrastructurePointId,
+      coverageArea: body.coverageArea,
+    });
+
+    if (!meteorologyAsset) {
+      throw new NotFoundException(
+        'Ativo de meteorologia não encontrado para o ponto de infraestrutura informado',
+      );
+    }
+
+    return meteorologyAsset;
   }
 
   private async findByInfrastructurePointIdOrThrow(
@@ -182,7 +220,7 @@ export class MeteorologyAssetController {
 
     if (!meteorologyAsset) {
       throw new NotFoundException(
-        'Asset de meteorologia nao encontrado para o ponto de infraestrutura informado',
+        'Ativo de meteorologia não encontrado para o ponto de infraestrutura informado',
       );
     }
 
@@ -201,7 +239,7 @@ export class MeteorologyAssetController {
       const normalizedState = stateFilter.toUpperCase();
 
       if (!isBrazilianState(normalizedState)) {
-        throw new BadRequestException('Invalid Brazilian state filter.');
+      throw new BadRequestException('Filtro de estado brasileiro inválido.');
       }
 
       filters.state = normalizedState;
@@ -209,7 +247,7 @@ export class MeteorologyAssetController {
 
     if (statusFilter) {
       if (!Object.values(MeteorologyAssetStatus).includes(statusFilter as MeteorologyAssetStatus)) {
-        throw new BadRequestException('Invalid meteorology asset status filter.');
+      throw new BadRequestException('Filtro de status do ativo de meteorologia inválido.');
       }
 
       filters.status = statusFilter as MeteorologyAssetStatus;
@@ -227,8 +265,8 @@ export class MeteorologyAssetController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Cria um asset de meteorologia' })
-  @ApiCreatedResponse({ description: 'Asset de meteorologia criado com sucesso' })
+  @ApiOperation({ summary: 'Cria um ativo de meteorologia' })
+  @ApiCreatedResponse({ description: 'Ativo de meteorologia criado com sucesso' })
   public async create(@Body() body: CreateMeteorologyAssetRequest): Promise<MeteorologyAsset> {
     const input = MeteorologyAssetMapper.toCreateInput(body);
     return this.createMeteorologyAssetUseCase.execute(input);

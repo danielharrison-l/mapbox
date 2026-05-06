@@ -6,6 +6,10 @@ export interface MeteorologyAssetRepository {
   save(entity: MeteorologyAsset): Promise<MeteorologyAsset>;
   findAll(filters?: FindMeteorologyAssetsInput): Promise<MeteorologyAsset[]>;
   findByInfrastructurePointId(infrastructurePointId: number): Promise<MeteorologyAsset | null>;
+  updateCoverageArea(
+    infrastructurePointId: number,
+    coverageArea: string,
+  ): Promise<MeteorologyAsset | null>;
   findCoverageSocioeconomicDataByInfrastructurePointId(
     infrastructurePointId: number,
   ): Promise<CoverageSocioeconomicDataOutput | null>;

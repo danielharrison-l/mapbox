@@ -37,39 +37,112 @@ type SocioeconomicAreaSeed = {
 
 type SocioeconomicAreaProfile = {
   name: string;
-  lngOffset: number;
-  latOffset: number;
+  lngOffsetFactor: number;
+  latOffsetFactor: number;
   populationFactor: number;
   incomeFactor: number;
 };
 
+type CapitalPlacementProfile = {
+  assetLngStep: number;
+  assetLatStep: number;
+  coverageLngRadius: number;
+  coverageLatRadius: number;
+  socioeconomicLngRadius: number;
+  socioeconomicLatRadius: number;
+};
+
+type SpecificCapitalAssetPlacement = {
+  nameSuffix: string;
+  coordinates: [number, number];
+};
+
 const TARGET_METEOROLOGY_ASSETS_COUNT = 90;
+const DEFAULT_CAPITAL_PLACEMENT_PROFILE: CapitalPlacementProfile = {
+  assetLngStep: 0.024,
+  assetLatStep: 0.017,
+  coverageLngRadius: 0.0055,
+  coverageLatRadius: 0.004,
+  socioeconomicLngRadius: 0.0028,
+  socioeconomicLatRadius: 0.0022,
+};
+const WATER_SENSITIVE_CAPITAL_PLACEMENT_PROFILE: CapitalPlacementProfile = {
+  assetLngStep: 0.0105,
+  assetLatStep: 0.0075,
+  coverageLngRadius: 0.0028,
+  coverageLatRadius: 0.002,
+  socioeconomicLngRadius: 0.0012,
+  socioeconomicLatRadius: 0.001,
+};
+const WATER_SENSITIVE_STATES: BrazilianState[] = [
+  'AL',
+  'AM',
+  'AP',
+  'BA',
+  'CE',
+  'ES',
+  'MA',
+  'PA',
+  'PB',
+  'PE',
+  'PI',
+  'RJ',
+  'RN',
+  'RO',
+  'RS',
+  'SC',
+  'SE',
+];
+const ASSET_OFFSET_PATTERNS: Array<[number, number]> = [
+  [-1.15, 0.55],
+  [0.95, -0.7],
+  [0.35, 1.2],
+  [-0.6, -1.05],
+  [1.15, 0.45],
+  [-0.9, -0.35],
+];
+const SPECIFIC_CAPITAL_ASSET_PLACEMENTS: Record<string, SpecificCapitalAssetPlacement[]> = {
+  'PA:Belem': [
+    {
+      nameSuffix: 'Icoaraci',
+      coordinates: [-48.4646, -1.3016],
+    },
+    {
+      nameSuffix: 'Nazaré',
+      coordinates: [-48.4896, -1.4526],
+    },
+    {
+      nameSuffix: 'Marco',
+      coordinates: [-48.4631, -1.4359],
+    },
+  ],
+};
 const SOCIOECONOMIC_AREA_PROFILES: SocioeconomicAreaProfile[] = [
   {
     name: 'Setor Norte',
-    lngOffset: 0,
-    latOffset: 0,
+    lngOffsetFactor: 0,
+    latOffsetFactor: 0.75,
     populationFactor: 1,
     incomeFactor: 0.92,
   },
   {
     name: 'Centro Expandido',
-    lngOffset: 0.036,
-    latOffset: 0.019,
+    lngOffsetFactor: 0.85,
+    latOffsetFactor: 0.35,
     populationFactor: 1.28,
     incomeFactor: 1.18,
   },
   {
     name: 'Zona Industrial',
-    lngOffset: -0.034,
-    latOffset: -0.024,
+    lngOffsetFactor: -0.8,
+    latOffsetFactor: -0.45,
     populationFactor: 0.74,
     incomeFactor: 1.04,
   },
   {
     name: 'Vila Olimpica',
-    lngOffset: 0.018,
-    latOffset: -0.041,
+    lngOffsetFactor: 0.35,
+    latOffsetFactor: -0.9,
     populationFactor: 0.86,
     incomeFactor: 0.78,
   },
@@ -77,15 +150,15 @@ const SOCIOECONOMIC_AREA_PROFILES: SocioeconomicAreaProfile[] = [
 
 const MUNICIPALITY_SEED_DATA: MunicipalitySeed[] = [
   { name: 'Rio Branco', state: 'AC', population: 364756, coordinates: [-67.8243, -9.974] },
-  { name: 'Maceio', state: 'AL', population: 957916, coordinates: [-35.735, -9.6658] },
+  { name: 'Maceió', state: 'AL', population: 957916, coordinates: [-35.735, -9.6658] },
   { name: 'Macapa', state: 'AP', population: 442933, coordinates: [-51.05, 0.0349] },
   { name: 'Manaus', state: 'AM', population: 2063689, coordinates: [-60.0217, -3.119] },
   { name: 'Salvador', state: 'BA', population: 2417678, coordinates: [-38.5014, -12.9777] },
   { name: 'Fortaleza', state: 'CE', population: 2428678, coordinates: [-38.5267, -3.7319] },
   { name: 'Brasilia', state: 'DF', population: 2817381, coordinates: [-47.8825, -15.7942] },
-  { name: 'Vitoria', state: 'ES', population: 322869, coordinates: [-40.3377, -20.3155] },
-  { name: 'Goiania', state: 'GO', population: 1437366, coordinates: [-49.2643, -16.6869] },
-  { name: 'Sao Luis', state: 'MA', population: 1037775, coordinates: [-44.3028, -2.5307] },
+  { name: 'Vitória', state: 'ES', population: 322869, coordinates: [-40.3377, -20.3155] },
+  { name: 'Goiânia', state: 'GO', population: 1437366, coordinates: [-49.2643, -16.6869] },
+  { name: 'São Luís', state: 'MA', population: 1037775, coordinates: [-44.3028, -2.5307] },
   { name: 'Cuiaba', state: 'MT', population: 650912, coordinates: [-56.0967, -15.601] },
   { name: 'Campo Grande', state: 'MS', population: 898100, coordinates: [-54.6464, -20.4697] },
   { name: 'Belo Horizonte', state: 'MG', population: 2315560, coordinates: [-43.9345, -19.9167] },
@@ -100,7 +173,7 @@ const MUNICIPALITY_SEED_DATA: MunicipalitySeed[] = [
   { name: 'Porto Velho', state: 'RO', population: 460434, coordinates: [-63.9039, -8.7608] },
   { name: 'Boa Vista', state: 'RR', population: 413486, coordinates: [-60.6758, 2.8235] },
   { name: 'Florianopolis', state: 'SC', population: 537211, coordinates: [-48.5482, -27.5949] },
-  { name: 'Sao Paulo', state: 'SP', population: 11451999, coordinates: [-46.6333, -23.5505] },
+  { name: 'São Paulo', state: 'SP', population: 11451999, coordinates: [-46.6333, -23.5505] },
   { name: 'Aracaju', state: 'SE', population: 602757, coordinates: [-37.0717, -10.9472] },
   { name: 'Palmas', state: 'TO', population: 302692, coordinates: [-48.3336, -10.184] },
 ];
@@ -146,11 +219,23 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
     for (let assetNumber = 1; assetNumber <= TARGET_METEOROLOGY_ASSETS_COUNT; assetNumber += 1) {
       const municipalityIndex = (assetNumber - 1) % municipalities.length;
       const municipalitySeed = MUNICIPALITY_SEED_DATA[municipalityIndex];
-      const coordinates = this.createAssetCoordinates(municipalitySeed.coordinates, assetNumber);
+      const municipalityAssetIndex = Math.floor((assetNumber - 1) / municipalities.length);
+      const specificPlacement = this.getSpecificAssetPlacement(
+        municipalitySeed,
+        municipalityAssetIndex,
+      );
+      const coordinates =
+        specificPlacement?.coordinates ??
+        this.createAssetCoordinates(municipalitySeed, municipalityAssetIndex);
+      const assetName = `Estação Meteorológica ${String(assetNumber).padStart(2, '0')}${
+        specificPlacement ? ` - ${specificPlacement.nameSuffix}` : ''
+      }`;
       const infrastructurePoint = await this.infrastructurePointRepository.save(
         this.infrastructurePointRepository.create({
-          name: `Estacao Meteorologica ${String(assetNumber).padStart(2, '0')}`,
-          description: `Ativo meteorologico de referencia da POC ${assetNumber}`,
+          name: assetName,
+          description: specificPlacement
+            ? `Ativo meteorológico de referência da POC ${assetNumber} em ${specificPlacement.nameSuffix}, ${municipalitySeed.name}/${municipalitySeed.state}`
+            : `Ativo meteorológico de referência da POC ${assetNumber}`,
           municipalityId: municipalities[municipalityIndex].id,
           geometry: this.createPointGeometry(coordinates) as unknown as string,
         }),
@@ -161,7 +246,11 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
           infrastructurePointId: infrastructurePoint.id,
           infrastructurePoint,
           status: this.createStatus(assetNumber),
-          coverageArea: this.createCoverageArea(coordinates, assetNumber) as unknown as string,
+          coverageArea: this.createCoverageArea(
+            municipalitySeed.state,
+            coordinates,
+            assetNumber,
+          ) as unknown as string,
         }),
       );
 
@@ -188,13 +277,18 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
   }
 
   private createAssetCoordinates(
-    [lng, lat]: [number, number],
-    assetNumber: number,
+    municipalitySeed: MunicipalitySeed,
+    municipalityAssetIndex: number,
   ): [number, number] {
-    const columnOffset = ((assetNumber - 1) % 5) - 2;
-    const rowOffset = (Math.floor((assetNumber - 1) / 5) % 3) - 1;
+    const [lng, lat] = municipalitySeed.coordinates;
+    const placementProfile = this.getPlacementProfile(municipalitySeed.state);
+    const [lngOffsetFactor, latOffsetFactor] =
+      ASSET_OFFSET_PATTERNS[municipalityAssetIndex % ASSET_OFFSET_PATTERNS.length];
 
-    return [lng + columnOffset * 0.11, lat + rowOffset * 0.08];
+    return [
+      this.roundCoordinate(lng + lngOffsetFactor * placementProfile.assetLngStep),
+      this.roundCoordinate(lat + latOffsetFactor * placementProfile.assetLatStep),
+    ];
   }
 
   private createPointGeometry(coordinates: [number, number]): PointGeometry {
@@ -204,11 +298,16 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
     };
   }
 
-  private createCoverageArea([lng, lat]: [number, number], assetNumber: number): PolygonGeometry {
+  private createCoverageArea(
+    state: BrazilianState,
+    [lng, lat]: [number, number],
+    assetNumber: number,
+  ): PolygonGeometry {
     const verticesCount = 8;
+    const placementProfile = this.getPlacementProfile(state);
     const angleOffset = ((assetNumber % verticesCount) * Math.PI) / 18;
-    const baseLngRadius = 0.2 + (assetNumber % 5) * 0.025;
-    const baseLatRadius = 0.16 + (assetNumber % 4) * 0.022;
+    const baseLngRadius = placementProfile.coverageLngRadius * (0.9 + (assetNumber % 3) * 0.05);
+    const baseLatRadius = placementProfile.coverageLatRadius * (0.9 + (assetNumber % 2) * 0.05);
     const coordinates: Array<[number, number]> = [];
 
     for (let index = 0; index < verticesCount; index += 1) {
@@ -216,8 +315,8 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
       const radiusFactor = 0.74 + (((assetNumber * 17 + index * 29) % 100) / 100) * 0.38;
 
       coordinates.push([
-        Number((lng + Math.cos(angle) * baseLngRadius * radiusFactor).toFixed(6)),
-        Number((lat + Math.sin(angle) * baseLatRadius * radiusFactor).toFixed(6)),
+        this.roundCoordinate(lng + Math.cos(angle) * baseLngRadius * radiusFactor),
+        this.roundCoordinate(lat + Math.sin(angle) * baseLatRadius * radiusFactor),
       ]);
     }
 
@@ -234,6 +333,7 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
     [lng, lat]: [number, number],
     assetNumber: number,
   ): SocioeconomicAreaSeed[] {
+    const placementProfile = this.getPlacementProfile(municipalitySeed.state);
     const populationScale = Math.min(3.25, Math.max(0.7, municipalitySeed.population / 900_000));
     const basePopulation = 420 + ((assetNumber * 149) % 980);
     const baseIncome = 1450 + ((assetNumber * 211) % 4200);
@@ -247,11 +347,37 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
         ),
         averageMonthlyIncome: Math.round((baseIncome + index * 260) * profile.incomeFactor),
         coordinates: [
-          Number((lng + profile.lngOffset).toFixed(6)),
-          Number((lat + profile.latOffset).toFixed(6)),
+          this.roundCoordinate(
+            lng + profile.lngOffsetFactor * placementProfile.socioeconomicLngRadius,
+          ),
+          this.roundCoordinate(
+            lat + profile.latOffsetFactor * placementProfile.socioeconomicLatRadius,
+          ),
         ],
       }),
     );
+  }
+
+  private getPlacementProfile(state: BrazilianState): CapitalPlacementProfile {
+    if (WATER_SENSITIVE_STATES.includes(state)) {
+      return WATER_SENSITIVE_CAPITAL_PLACEMENT_PROFILE;
+    }
+
+    return DEFAULT_CAPITAL_PLACEMENT_PROFILE;
+  }
+
+  private getSpecificAssetPlacement(
+    municipalitySeed: MunicipalitySeed,
+    municipalityAssetIndex: number,
+  ): SpecificCapitalAssetPlacement | null {
+    const placements =
+      SPECIFIC_CAPITAL_ASSET_PLACEMENTS[`${municipalitySeed.state}:${municipalitySeed.name}`];
+
+    return placements?.[municipalityAssetIndex % placements.length] ?? null;
+  }
+
+  private roundCoordinate(coordinate: number): number {
+    return Number(coordinate.toFixed(6));
   }
 
   private createStatus(assetNumber: number): MeteorologyAssetStatus {

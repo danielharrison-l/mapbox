@@ -76,6 +76,21 @@ export class TypeOrmMeteorologyAssetRepository implements MeteorologyAssetReposi
     });
   }
 
+  public async updateCoverageArea(
+    infrastructurePointId: number,
+    coverageArea: string,
+  ): Promise<MeteorologyAsset | null> {
+    const meteorologyAsset = await this.findByInfrastructurePointId(infrastructurePointId);
+
+    if (!meteorologyAsset) {
+      return null;
+    }
+
+    meteorologyAsset.coverageArea = coverageArea;
+
+    return this.repository.save(meteorologyAsset);
+  }
+
   public async findCoverageSocioeconomicDataByInfrastructurePointId(
     infrastructurePointId: number,
   ): Promise<CoverageSocioeconomicDataOutput | null> {
