@@ -2,6 +2,7 @@ import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import mapboxgl from 'mapbox-gl';
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapCanvas } from './components/MapCanvas';
+import { MapStyleSwitcher } from './components/MapStyleSwitcher';
 import { OperationalSidebar, type OperationalSidebarMode } from './components/OperationalSidebar';
 import { TokenWarning } from './components/TokenWarning';
 import {
@@ -28,11 +29,10 @@ import {
   configureUrbanBuildingStyle,
   enableTerrain,
   getPolygonBounds,
-  hasUrbanBuildingAtPoint,
-  installUrbanBuildingInteractions,
+  MAP_STYLES,
+  type MapStyleId,
   METEOROLOGY_ASSETS_LAYER_ID,
   readAssetFeature,
-  type UrbanBuildingInteractionsController,
   upsertAssetLayer,
   upsertCoverageSocioeconomicLayer,
   upsertIsochroneLayer,
@@ -41,6 +41,7 @@ import {
   upsertSelectedPointLayer,
 } from './lib/mapbox';
 import {
+  createStateAssetGlbModels,
   measureMapFrameRate,
   removeStateAsset3dModels,
   STATE_ASSETS_3D_MODEL_LAYER_ID,
@@ -82,14 +83,16 @@ const emptyAssetsGeoJson: MeteorologyAssetsPointCollection = {
 
 const ASSET_CLICK_HITBOX_PX = 22;
 const MODEL_CLICK_HITBOX_PX = 28;
-const stateModelPerformanceUrl = 'mocked-state-glbs';
+const SIDEBAR_OPEN_WIDTH_PX = 360;
+const MAP_FOCUS_PADDING_PX = 96;
+const stateModelPerformanceUrl = 'configured-existing-state-glbs';
 
 const initialModelCalibration: ModelCalibration = {
   offsetEastMeters: 0,
   offsetNorthMeters: 0,
-  scaleX: 0.8,
-  scaleY: 0.8,
-  scaleZ: 1.2,
+  scaleX: 1,
+  scaleY: 1,
+  scaleZ: 1,
   rotationZ: 35,
   clipRadiusMeters: 120,
 };
@@ -122,6 +125,27 @@ function getApiErrorMessage(error: unknown): string {
   }
 
   return getErrorMessage(error);
+}
+
+function shouldOffsetMapFocusForSidebar(): boolean {
+  return window.matchMedia('(min-width: 768px)').matches;
+}
+
+function getMapFocusOffset(): [number, number] {
+  return shouldOffsetMapFocusForSidebar() ? [SIDEBAR_OPEN_WIDTH_PX / 2, 0] : [0, 0];
+}
+
+function getMapFocusBoundsPadding() {
+  if (!shouldOffsetMapFocusForSidebar()) {
+    return MAP_FOCUS_PADDING_PX;
+  }
+
+  return {
+    top: MAP_FOCUS_PADDING_PX,
+    right: MAP_FOCUS_PADDING_PX,
+    bottom: MAP_FOCUS_PADDING_PX,
+    left: SIDEBAR_OPEN_WIDTH_PX + MAP_FOCUS_PADDING_PX,
+  };
 }
 
 function coordinatesMatch(
@@ -179,8 +203,6 @@ function App() {
   const ignoreNextMapClickRef = useRef(false);
   const isDrawingCoverageRef = useRef(false);
   const suppressNextDrawDeleteRef = useRef(false);
-  const urbanBuildingClickRef = useRef(false);
-  const urbanBuildingInteractionsRef = useRef<UrbanBuildingInteractionsController | null>(null);
   const clearDrawnCoverageAreaRef = useRef<() => void>(() => undefined);
   const coverageSocioeconomicAbortControllerRef = useRef<AbortController | null>(null);
   const coverageSocioeconomicSelectionRefreshRef = useRef<number | null>(null);
@@ -195,6 +217,7 @@ function App() {
     () => undefined,
   );
   const assetsByInfrastructurePointIdRef = useRef(new Map<number, MeteorologyAssetPointFeature>());
+  const hasCapturedInitialGlbAssetsRef = useRef(false);
   const hasFocusedStateModelsRef = useRef(false);
   const municipalitiesRef = useRef<Municipality[]>([]);
   const modelMeasurementSequenceRef = useRef(0);
@@ -205,6 +228,9 @@ function App() {
   const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
   const [assetsGeoJson, setAssetsGeoJson] =
     useState<MeteorologyAssetsPointCollection>(emptyAssetsGeoJson);
+  const [initialStateGlbAssets, setInitialStateGlbAssets] = useState<
+    MeteorologyAssetPointFeature[]
+  >([]);
   const [totalAssetsCount, setTotalAssetsCount] = useState(0);
   const [filters, setFilters] = useState<AssetFilters>(initialAssetFilters);
   const [selectedPoint, setSelectedPoint] = useState<[number, number] | null>(null);
@@ -229,6 +255,8 @@ function App() {
   const [selectedAssetElevationMeters, setSelectedAssetElevationMeters] = useState<number | null>(
     null,
   );
+  const [mapStyle, setMapStyle] = useState<MapStyleId>('standard');
+  const [isMapStyleLoaded, setIsMapStyleLoaded] = useState(false);
   const [locationSearchQuery, setLocationSearchQuery] = useState('');
   const [locationSearchStatus, setLocationSearchStatus] = useState<
     'idle' | 'loading' | 'complete' | 'failed'
@@ -243,11 +271,46 @@ function App() {
   const accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
   const tokenMissing = !accessToken || accessToken === 'your_mapbox_access_token_here';
 
+  const changeMapStyle = useCallback(
+    (nextStyle: MapStyleId) => {
+      if (nextStyle === mapStyle) {
+        return;
+      }
+
+      const map = mapRef.current;
+
+      if (!map) {
+        setMapStyle(nextStyle);
+        return;
+      }
+
+      try {
+        setIsMapStyleLoaded(false);
+        map.setStyle(MAP_STYLES[nextStyle]);
+        setMapStyle(nextStyle);
+      } catch (error: unknown) {
+        setIsMapStyleLoaded(map.isStyleLoaded());
+        setFormStatus(`Falha ao alternar estilo do mapa: ${getErrorMessage(error)}`);
+      }
+    },
+    [mapStyle],
+  );
+
   const reloadAssets = useCallback(async (signal: AbortSignal, nextFilters: AssetFilters) => {
     const geoJson = await fetchMeteorologyAssets(signal, nextFilters);
     assetsByInfrastructurePointIdRef.current = new Map(
       geoJson.features.map((feature) => [feature.properties.infrastructurePointId, feature]),
     );
+
+    if (
+      !hasCapturedInitialGlbAssetsRef.current &&
+      nextFilters.state === 'ALL' &&
+      nextFilters.status === 'ALL'
+    ) {
+      hasCapturedInitialGlbAssetsRef.current = true;
+      setInitialStateGlbAssets(geoJson.features);
+    }
+
     setAssetsGeoJson(geoJson);
     return geoJson;
   }, []);
@@ -256,12 +319,15 @@ function App() {
     () => filters.state !== 'ALL' || filters.status !== 'ALL',
     [filters],
   );
+  const stateAssetGlbModels = useMemo(
+    () => createStateAssetGlbModels(initialStateGlbAssets),
+    [initialStateGlbAssets],
+  );
   const selectedAssetInfrastructurePointId =
     selectedAsset?.properties.infrastructurePointId ?? null;
 
   useEffect(() => {
     selectedAssetRef.current = selectedAsset;
-    urbanBuildingInteractionsRef.current?.clear();
   }, [selectedAsset]);
 
   const clearSelectedAsset = useCallback(() => {
@@ -613,7 +679,7 @@ function App() {
 
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
-      style: 'mapbox://styles/mapbox/standard',
+      style: MAP_STYLES.standard,
       center: [-53.2, -10.3],
       zoom: 3.5,
       minZoom: 3,
@@ -632,22 +698,10 @@ function App() {
     mapRef.current = map;
 
     map.on('style.load', () => {
-      map.setConfigProperty('basemap', 'lightPreset', 'day');
-      map.setConfigProperty('basemap', 'showPointOfInterestLabels', true);
       configureUrbanBuildingStyle(map);
       enableTerrain(map);
+      setIsMapStyleLoaded(true);
     });
-
-    const urbanBuildingInteractions = installUrbanBuildingInteractions(map, {
-      getSelectedAsset: () => selectedAssetRef.current,
-      onBuildingClick: () => {
-        urbanBuildingClickRef.current = true;
-        window.setTimeout(() => {
-          urbanBuildingClickRef.current = false;
-        }, 75);
-      },
-    });
-    urbanBuildingInteractionsRef.current = urbanBuildingInteractions;
 
     const syncDrawnCoverageArea = () => {
       if (suppressNextDrawDeleteRef.current) {
@@ -703,6 +757,7 @@ function App() {
       setFormStatus('Entregável selecionado. Clique em uma área vazia para cadastrar outro ponto.');
       map.easeTo({
         center: assetFeature.geometry.coordinates,
+        offset: getMapFocusOffset(),
         zoom: Math.max(map.getZoom(), 15),
         pitch: 60,
         duration: 700,
@@ -776,11 +831,6 @@ function App() {
         return;
       }
 
-      if (urbanBuildingClickRef.current) {
-        urbanBuildingClickRef.current = false;
-        return;
-      }
-
       if (isDrawingCoverageRef.current || draw.getMode() === 'draw_polygon') {
         return;
       }
@@ -814,10 +864,6 @@ function App() {
         return;
       }
 
-      if (hasUrbanBuildingAtPoint(map, event.point, event.lngLat, selectedAssetRef.current)) {
-        return;
-      }
-
       const coordinates: [number, number] = [event.lngLat.lng, event.lngLat.lat];
       setSelectedAsset(null);
       setIsEditingExistingCoverage(false);
@@ -847,8 +893,6 @@ function App() {
     return () => {
       map.off('draw.create', syncDrawnCoverageArea);
       map.off('draw.delete', syncDrawnCoverageArea);
-      urbanBuildingInteractions.dispose();
-      urbanBuildingInteractionsRef.current = null;
       drawRef.current = null;
       map.remove();
       mapRef.current = null;
@@ -857,54 +901,84 @@ function App() {
   }, [tokenMissing]);
 
   useEffect(() => {
-    if (!isMapLoaded || !mapRef.current) {
+    const map = mapRef.current;
+
+    if (!isMapLoaded || !map || !isMapStyleLoaded) {
       return;
     }
 
-    upsertAssetLayer(mapRef.current, assetsGeoJson);
-  }, [assetsGeoJson, isMapLoaded]);
-
-  useEffect(() => {
-    if (!isMapLoaded || !mapRef.current) {
-      return;
-    }
-
-    upsertSelectedCoverageLayer(mapRef.current, isSelectedCoverageVisible ? selectedAsset : null);
-  }, [isMapLoaded, isSelectedCoverageVisible, selectedAsset]);
-
-  useEffect(() => {
-    if (!isMapLoaded || !mapRef.current) {
-      return;
-    }
-
-    upsertCoverageSocioeconomicLayer(mapRef.current, coverageSocioeconomicData);
-  }, [coverageSocioeconomicData, isMapLoaded]);
-
-  useEffect(() => {
-    if (!isMapLoaded || !mapRef.current) {
-      return;
-    }
-
-    upsertIsochroneLayer(mapRef.current, isochroneData);
-  }, [isochroneData, isMapLoaded]);
-
-  useEffect(() => {
-    if (!isMapLoaded || !mapRef.current || !selectedAsset) {
-      setSelectedAssetElevationMeters(null);
-      return;
-    }
-
-    const elevation = mapRef.current.queryTerrainElevation(selectedAsset.geometry.coordinates, {
-      exaggerated: false,
-    });
-
-    setSelectedAssetElevationMeters(typeof elevation === 'number' ? elevation : null);
-  }, [isMapLoaded, selectedAsset]);
+    upsertAssetLayer(map, assetsGeoJson);
+  }, [assetsGeoJson, isMapLoaded, isMapStyleLoaded]);
 
   useEffect(() => {
     const map = mapRef.current;
 
-    if (!isMapLoaded || !map) {
+    if (!isMapLoaded || !map || !isMapStyleLoaded) {
+      return;
+    }
+
+    upsertSelectedPointLayer(map, selectedPoint);
+  }, [isMapLoaded, isMapStyleLoaded, selectedPoint]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (!isMapLoaded || !map || !isMapStyleLoaded) {
+      return;
+    }
+
+    upsertSelectedAssetLayer(map, selectedAsset);
+  }, [isMapLoaded, isMapStyleLoaded, selectedAsset]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (!isMapLoaded || !map || !isMapStyleLoaded) {
+      return;
+    }
+
+    upsertSelectedCoverageLayer(map, isSelectedCoverageVisible ? selectedAsset : null);
+  }, [isMapLoaded, isMapStyleLoaded, isSelectedCoverageVisible, selectedAsset]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (!isMapLoaded || !map || !isMapStyleLoaded) {
+      return;
+    }
+
+    upsertCoverageSocioeconomicLayer(map, coverageSocioeconomicData);
+  }, [coverageSocioeconomicData, isMapLoaded, isMapStyleLoaded]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (!isMapLoaded || !map || !isMapStyleLoaded) {
+      return;
+    }
+
+    upsertIsochroneLayer(map, isochroneData);
+  }, [isochroneData, isMapLoaded, isMapStyleLoaded]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (!isMapLoaded || !map || !isMapStyleLoaded || !selectedAsset) {
+      setSelectedAssetElevationMeters(null);
+      return;
+    }
+
+    const elevation = map.queryTerrainElevation(selectedAsset.geometry.coordinates, {
+      exaggerated: false,
+    });
+
+    setSelectedAssetElevationMeters(typeof elevation === 'number' ? elevation : null);
+  }, [isMapLoaded, isMapStyleLoaded, selectedAsset]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (!isMapLoaded || !map || !isMapStyleLoaded) {
       return;
     }
 
@@ -913,7 +987,7 @@ function App() {
 
     setModelPerformance(createModelPerformance('measuring'));
 
-    const stateModels = upsertStateAsset3dModels(map, {
+    const stateModels = upsertStateAsset3dModels(map, stateAssetGlbModels, {
       scale: [modelCalibration.scaleX, modelCalibration.scaleY, modelCalibration.scaleZ],
       rotation: [0, 0, modelCalibration.rotationZ],
       offsetMeters: {
@@ -921,7 +995,7 @@ function App() {
         north: modelCalibration.offsetNorthMeters,
       },
       clipRadiusMeters: modelCalibration.clipRadiusMeters,
-      minZoom: 15,
+      minZoom: 8,
       onReady: () => {
         void measureMapFrameRate(5000).then((measurement) => {
           if (sequence !== modelMeasurementSequenceRef.current) {
@@ -960,14 +1034,20 @@ function App() {
       },
     });
 
+    if (stateModels.length === 0) {
+      setModelPerformance(createModelPerformance('idle'));
+      return;
+    }
+
     if (stateModels.length > 0 && !hasFocusedStateModelsRef.current) {
       const firstStateModel = stateModels[0];
       hasFocusedStateModelsRef.current = true;
 
       map.easeTo({
         center: firstStateModel.coordinates,
-        zoom: 15.27,
-        pitch: 42,
+        offset: getMapFocusOffset(),
+        zoom: 17.2,
+        pitch: 58,
         bearing: -50,
         duration: 900,
       });
@@ -978,7 +1058,7 @@ function App() {
         removeStateAsset3dModels(mapRef.current);
       }
     };
-  }, [isMapLoaded, modelCalibration]);
+  }, [isMapLoaded, isMapStyleLoaded, modelCalibration, stateAssetGlbModels]);
 
   useEffect(() => {
     if (selectedAsset && !assetMatchesFilters(selectedAsset, filters)) {
@@ -1199,6 +1279,7 @@ function App() {
 
         mapRef.current?.easeTo({
           center: result.coordinates,
+          offset: getMapFocusOffset(),
           zoom: 12,
           pitch: 42,
           duration: 700,
@@ -1346,7 +1427,7 @@ function App() {
 
     if (coverageBounds) {
       mapRef.current.fitBounds(coverageBounds, {
-        padding: 96,
+        padding: getMapFocusBoundsPadding(),
         maxZoom: 9,
         duration: 600,
       });
@@ -1355,6 +1436,7 @@ function App() {
 
     mapRef.current.easeTo({
       center: selectedAsset.geometry.coordinates,
+      offset: getMapFocusOffset(),
       zoom: Math.max(mapRef.current.getZoom(), 8),
       duration: 600,
     });
@@ -1378,6 +1460,7 @@ function App() {
     upsertSelectedAssetLayer(map, assetFeature);
     map.easeTo({
       center: assetFeature.geometry.coordinates,
+      offset: getMapFocusOffset(),
       zoom: Math.max(map.getZoom(), 15),
       pitch: 60,
       duration: 700,
@@ -1391,6 +1474,8 @@ function App() {
   return (
     <>
       <MapCanvas containerRef={mapContainerRef} />
+
+      {!tokenMissing && <MapStyleSwitcher currentStyle={mapStyle} onChangeStyle={changeMapStyle} />}
 
       {!tokenMissing && (
         <OperationalSidebar

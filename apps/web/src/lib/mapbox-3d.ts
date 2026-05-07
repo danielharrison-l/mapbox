@@ -1,5 +1,5 @@
 import mapboxgl from 'mapbox-gl';
-import type { PolygonGeometry } from '../types/geo';
+import type { MeteorologyAssetPointFeature, PolygonGeometry } from '../types/geo';
 
 export const STATE_ASSETS_3D_CLIP_LAYER_ID = 'state-assets-3d-clip';
 export const STATE_ASSETS_3D_MODEL_LAYER_ID = 'state-assets-3d-model';
@@ -14,34 +14,51 @@ const SELECTED_ASSET_3D_MODEL_SOURCE_ID = 'selected-asset-3d-model';
 export type MockedStateGlbModel = {
   id: string;
   name: string;
-  state: 'MG' | 'PA' | 'SP';
+  state: 'BA' | 'MG' | 'PA' | 'SP';
   coordinates: [number, number];
   modelUrl: string;
+  scaleMultiplier?: [number, number, number];
+  translation?: [number, number, number];
 };
 
-export const MOCKED_STATE_GLB_MODELS: MockedStateGlbModel[] = [
-  {
-    id: 'pa-belem-glb',
-    name: 'GLB mockado - Para',
+type StateGlbModelConfig = {
+  state: MockedStateGlbModel['state'];
+  modelUrl: string;
+  namePrefix: string;
+  scaleMultiplier: [number, number, number];
+  translation: [number, number, number];
+};
+
+const STATE_GLB_MODEL_CONFIGS: Record<MockedStateGlbModel['state'], StateGlbModelConfig> = {
+  BA: {
+    state: 'BA',
+    modelUrl: '/models/blender-otimizado.glb',
+    namePrefix: 'Otimizado',
+    scaleMultiplier: [0.6, 0.6, 0.6],
+    translation: [0, 0, 1],
+  },
+  PA: {
     state: 'PA',
-    coordinates: [-48.4896, -1.4526],
-    modelUrl: '/models/para.glb',
+    modelUrl: '/models/blender001.glb',
+    namePrefix: 'Teste',
+    scaleMultiplier: [0.6, 0.6, 0.6],
+    translation: [0, 0, 1],
   },
-  {
-    id: 'mg-belo-horizonte-glb',
-    name: 'GLB mockado - Minas Gerais',
+  MG: {
     state: 'MG',
-    coordinates: [-43.9345, -19.9167],
-    modelUrl: '/models/minas-gerais.glb',
+    modelUrl: '/models/tower.glb',
+    namePrefix: 'Tower',
+    scaleMultiplier: [0.22, 0.22, 0.22],
+    translation: [0, 0, 0],
   },
-  {
-    id: 'sp-sao-paulo-glb',
-    name: 'GLB mockado - Sao Paulo',
+  SP: {
     state: 'SP',
-    coordinates: [-46.6333, -23.5505],
-    modelUrl: '/models/sao-paulo.glb',
+    modelUrl: '/models/blender001.glb',
+    namePrefix: 'Teste',
+    scaleMultiplier: [0.6, 0.6, 0.6],
+    translation: [0, 0, 1],
   },
-];
+};
 
 type Asset3dModelOptions = {
   modelUrl?: string;
@@ -77,7 +94,9 @@ type ModelPointProperties = {
   id: string;
   name: string;
   state: MockedStateGlbModel['state'];
-  'model-uri': string;
+  'model-id': string;
+  'model-scale': [number, number, number];
+  'model-translation': [number, number, number];
 };
 
 type ModelPointCollection = GeoJsonFeatureCollection<ModelPointGeometry, ModelPointProperties>;
@@ -105,6 +124,66 @@ function removeSourceIfExists(map: mapboxgl.Map, sourceId: string) {
 
 function resolveModelUrl(modelUrl: string): string {
   return new URL(modelUrl, window.location.href).href;
+}
+
+function getRuntimeModelId(model: MockedStateGlbModel, fallbackModelUrl?: string) {
+  const modelUrl = fallbackModelUrl ?? model.modelUrl;
+  const modelFileName =
+    modelUrl
+      .split('/')
+      .pop()
+      ?.replace(/\.glb$/i, '') || model.id;
+  const normalizedModelId = modelFileName.replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
+
+  return `runtime-${normalizedModelId}`;
+}
+
+function getStateGlbModelConfig(state: string | null): StateGlbModelConfig | null {
+  if (state === 'BA' || state === 'PA' || state === 'MG' || state === 'SP') {
+    return STATE_GLB_MODEL_CONFIGS[state];
+  }
+
+  return null;
+}
+
+export function createStateAssetGlbModels(
+  assets: MeteorologyAssetPointFeature[],
+): MockedStateGlbModel[] {
+  return assets.flatMap((asset) => {
+    const config = getStateGlbModelConfig(asset.properties.municipalityState);
+
+    if (!config) {
+      return [];
+    }
+
+    return [
+      {
+        id: `${config.state.toLowerCase()}-${asset.properties.infrastructurePointId}-${config.namePrefix.toLowerCase()}-glb`,
+        name: `${config.namePrefix} - ${asset.properties.name}`,
+        state: config.state,
+        coordinates: asset.geometry.coordinates,
+        modelUrl: config.modelUrl,
+        scaleMultiplier: config.scaleMultiplier,
+        translation: config.translation,
+      },
+    ];
+  });
+}
+
+function registerRuntimeModels(
+  map: mapboxgl.Map,
+  models: MockedStateGlbModel[],
+  fallbackModelUrl: string | undefined,
+) {
+  for (const model of models) {
+    const modelId = getRuntimeModelId(model, fallbackModelUrl);
+
+    if (map.hasModel(modelId)) {
+      continue;
+    }
+
+    map.addModel(modelId, resolveModelUrl(fallbackModelUrl ?? model.modelUrl));
+  }
 }
 
 function applyMeterOffset(
@@ -152,6 +231,16 @@ function createClipPolygon(
   };
 }
 
+function getModelScale(
+  model: MockedStateGlbModel,
+  scale: Asset3dModelOptions['scale'],
+): [number, number, number] {
+  const baseScale = scale ?? [1, 1, 1];
+  const multiplier = model.scaleMultiplier ?? [1, 1, 1];
+
+  return [baseScale[0] * multiplier[0], baseScale[1] * multiplier[1], baseScale[2] * multiplier[2]];
+}
+
 function createClipSourceData(
   models: MockedStateGlbModel[],
   radiusMeters: number,
@@ -165,8 +254,9 @@ function createClipSourceData(
 
 function createModelSourceData(
   models: MockedStateGlbModel[],
-  fallbackModelUrl: string | undefined,
   offsetMeters: Asset3dModelOptions['offsetMeters'],
+  scale: Asset3dModelOptions['scale'],
+  fallbackModelUrl: string | undefined,
 ): ModelPointCollection {
   return {
     type: 'FeatureCollection',
@@ -176,7 +266,9 @@ function createModelSourceData(
         id: model.id,
         name: model.name,
         state: model.state,
-        'model-uri': resolveModelUrl(fallbackModelUrl ?? model.modelUrl),
+        'model-id': getRuntimeModelId(model, fallbackModelUrl),
+        'model-scale': getModelScale(model, scale),
+        'model-translation': model.translation ?? [0, 0, 4],
       },
       geometry: {
         type: 'Point',
@@ -197,6 +289,8 @@ function addClipAndModelLayers(
   },
   options: Asset3dModelOptions,
 ) {
+  registerRuntimeModels(map, models, options.modelUrl);
+
   map.addSource(ids.clipSourceId, {
     type: 'geojson',
     data: createClipSourceData(models, options.clipRadiusMeters ?? 120, options.offsetMeters),
@@ -204,7 +298,7 @@ function addClipAndModelLayers(
 
   map.addSource(ids.modelSourceId, {
     type: 'geojson',
-    data: createModelSourceData(models, options.modelUrl, options.offsetMeters),
+    data: createModelSourceData(models, options.offsetMeters, options.scale, options.modelUrl),
   });
 
   map.addLayer({
@@ -220,19 +314,24 @@ function addClipAndModelLayers(
   map.addLayer({
     id: ids.modelLayerId,
     type: 'model',
-    slot: 'middle',
+    slot: 'top',
     source: ids.modelSourceId,
     minzoom: options.minZoom ?? 15,
     layout: {
-      'model-id': ['get', 'model-uri'],
+      'model-id': ['get', 'model-id'],
+      'model-allow-density-reduction': false,
     },
     paint: {
       'model-opacity': 1,
       'model-rotation': options.rotation ?? [0, 0, 35],
-      'model-scale': options.scale ?? [0.8, 0.8, 1.2],
+      'model-scale': ['array', 'number', 3, ['get', 'model-scale']],
+      'model-translation': ['array', 'number', 3, ['get', 'model-translation']],
       'model-color-mix-intensity': 0,
       'model-cast-shadows': true,
-      'model-emissive-strength': 0.8,
+      'model-receive-shadows': true,
+      'model-ambient-occlusion-intensity': 0.85,
+      'model-emissive-strength': 0.2,
+      'model-roughness': 0.75,
     },
   } as mapboxgl.AnyLayer);
 
@@ -263,10 +362,12 @@ export function removeStateAsset3dModels(map: mapboxgl.Map) {
   removeSourceIfExists(map, STATE_ASSETS_3D_CLIP_SOURCE_ID);
 }
 
-export function upsertStateAsset3dModels(map: mapboxgl.Map, options: Asset3dModelOptions) {
+export function upsertStateAsset3dModels(
+  map: mapboxgl.Map,
+  stateModels: MockedStateGlbModel[],
+  options: Asset3dModelOptions,
+) {
   removeStateAsset3dModels(map);
-
-  const stateModels = MOCKED_STATE_GLB_MODELS;
 
   if (stateModels.length === 0) {
     return stateModels;
