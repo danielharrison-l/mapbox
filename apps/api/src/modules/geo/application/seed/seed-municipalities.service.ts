@@ -53,7 +53,7 @@ type CapitalPlacementProfile = {
 };
 
 type SpecificCapitalAssetPlacement = {
-  nameSuffix: string;
+  name: string;
   coordinates: [number, number];
 };
 
@@ -104,16 +104,16 @@ const ASSET_OFFSET_PATTERNS: Array<[number, number]> = [
 const SPECIFIC_CAPITAL_ASSET_PLACEMENTS: Record<string, SpecificCapitalAssetPlacement[]> = {
   'PA:Belem': [
     {
-      nameSuffix: 'Icoaraci',
-      coordinates: [-48.4646, -1.3016],
+      name: '14 SETOR',
+      coordinates: [-48.454269331682, -1.402101078396209],
     },
     {
-      nameSuffix: 'Nazaré',
-      coordinates: [-48.4896, -1.4526],
+      name: '07 SETOR',
+      coordinates: [-48.44502109037465, -1.4566665776308565],
     },
     {
-      nameSuffix: 'Marco',
-      coordinates: [-48.4631, -1.4359],
+      name: '04 SETOR',
+      coordinates: [-48.46897759784098, -1.4620388948113543],
     },
   ],
 };
@@ -227,14 +227,13 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
       const coordinates =
         specificPlacement?.coordinates ??
         this.createAssetCoordinates(municipalitySeed, municipalityAssetIndex);
-      const assetName = `Estação Meteorológica ${String(assetNumber).padStart(2, '0')}${
-        specificPlacement ? ` - ${specificPlacement.nameSuffix}` : ''
-      }`;
+      const assetName =
+        specificPlacement?.name ?? `Estação Meteorológica ${String(assetNumber).padStart(2, '0')}`;
       const infrastructurePoint = await this.infrastructurePointRepository.save(
         this.infrastructurePointRepository.create({
           name: assetName,
           description: specificPlacement
-            ? `Ativo meteorológico de referência da POC ${assetNumber} em ${specificPlacement.nameSuffix}, ${municipalitySeed.name}/${municipalitySeed.state}`
+            ? `Ativo meteorológico de referência da POC ${assetNumber} em ${specificPlacement.name}, ${municipalitySeed.name}/${municipalitySeed.state}`
             : `Ativo meteorológico de referência da POC ${assetNumber}`,
           municipalityId: municipalities[municipalityIndex].id,
           geometry: this.createPointGeometry(coordinates) as unknown as string,
