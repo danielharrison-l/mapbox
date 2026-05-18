@@ -25,7 +25,7 @@ import { cn } from '../lib/utils';
 import type {
   AssetFilters,
   AssetFormState,
-  CoverageSocioeconomicData,
+  IbgeSocioeconomicData,
   MeteorologyAssetPointFeature,
   MeteorologyAssetStatus,
   ModelCalibration,
@@ -63,9 +63,9 @@ export type OperationalSidebarMode =
 type OperationalSidebarProps = {
   assets: MeteorologyAssetPointFeature[];
   coverageArea: PolygonGeometry | null;
-  coverageSocioeconomicData: CoverageSocioeconomicData | null;
-  coverageSocioeconomicError: string | null;
-  coverageSocioeconomicStatus: 'idle' | 'loading' | 'complete' | 'failed';
+  ibgeSocioeconomicData: IbgeSocioeconomicData | null;
+  ibgeSocioeconomicError: string | null;
+  ibgeSocioeconomicStatus: 'idle' | 'loading' | 'complete' | 'failed';
   filters: AssetFilters;
   form: AssetFormState;
   formStatus: string;
@@ -94,7 +94,7 @@ type OperationalSidebarProps = {
   onClearFilters: () => void;
   onFocusCoverage: () => void;
   onFinishCoverageDraw: () => void;
-  onLoadCoverageSocioeconomicData: () => void;
+  onLoadIbgeSocioeconomicData: () => void;
   onLoadIsochrone: () => void;
   onLocationSearchSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onResetCreateDraft: () => void;
@@ -177,8 +177,8 @@ const modeCopy: Record<OperationalSidebarMode, { title: string; subtitle: string
     subtitle: 'Desenho e revisão do polígono',
   },
   data: {
-    title: 'Análise Socioeconômica',
-    subtitle: 'Relatório operacional de área metropolitana',
+    title: 'Indicadores IBGE',
+    subtitle: 'Dados municipais via API oficial',
   },
   model: {
     title: 'Modelo 3D',
@@ -186,14 +186,12 @@ const modeCopy: Record<OperationalSidebarMode, { title: string; subtitle: string
   },
 };
 
-const currencyFormatter = new Intl.NumberFormat('pt-BR', {
-  style: 'currency',
-  currency: 'BRL',
-  maximumFractionDigits: 2,
-});
-
 const integerFormatter = new Intl.NumberFormat('pt-BR', {
   maximumFractionDigits: 0,
+});
+
+const decimalFormatter = new Intl.NumberFormat('pt-BR', {
+  maximumFractionDigits: 2,
 });
 
 function getModelPerformanceLabel(modelPerformance: ModelPerformance) {
@@ -230,9 +228,9 @@ function getCoverageGeometryLabel(
 export function OperationalSidebar({
   assets,
   coverageArea,
-  coverageSocioeconomicData,
-  coverageSocioeconomicError,
-  coverageSocioeconomicStatus,
+  ibgeSocioeconomicData,
+  ibgeSocioeconomicError,
+  ibgeSocioeconomicStatus,
   filters,
   form,
   formStatus,
@@ -261,7 +259,7 @@ export function OperationalSidebar({
   onClearFilters,
   onFocusCoverage,
   onFinishCoverageDraw,
-  onLoadCoverageSocioeconomicData,
+  onLoadIbgeSocioeconomicData,
   onLoadIsochrone,
   onLocationSearchSubmit,
   onResetCreateDraft,
@@ -282,9 +280,9 @@ export function OperationalSidebar({
       <OperationalSidebarShell
         assets={assets}
         coverageArea={coverageArea}
-        coverageSocioeconomicData={coverageSocioeconomicData}
-        coverageSocioeconomicError={coverageSocioeconomicError}
-        coverageSocioeconomicStatus={coverageSocioeconomicStatus}
+        ibgeSocioeconomicData={ibgeSocioeconomicData}
+        ibgeSocioeconomicError={ibgeSocioeconomicError}
+        ibgeSocioeconomicStatus={ibgeSocioeconomicStatus}
         filters={filters}
         form={form}
         formStatus={formStatus}
@@ -313,7 +311,7 @@ export function OperationalSidebar({
         onClearFilters={onClearFilters}
         onFocusCoverage={onFocusCoverage}
         onFinishCoverageDraw={onFinishCoverageDraw}
-        onLoadCoverageSocioeconomicData={onLoadCoverageSocioeconomicData}
+        onLoadIbgeSocioeconomicData={onLoadIbgeSocioeconomicData}
         onLoadIsochrone={onLoadIsochrone}
         onLocationSearchSubmit={onLocationSearchSubmit}
         onResetCreateDraft={onResetCreateDraft}
@@ -336,9 +334,9 @@ export function OperationalSidebar({
 function OperationalSidebarShell({
   assets,
   coverageArea,
-  coverageSocioeconomicData,
-  coverageSocioeconomicError,
-  coverageSocioeconomicStatus,
+  ibgeSocioeconomicData,
+  ibgeSocioeconomicError,
+  ibgeSocioeconomicStatus,
   filters,
   form,
   formStatus,
@@ -367,7 +365,7 @@ function OperationalSidebarShell({
   onClearFilters,
   onFocusCoverage,
   onFinishCoverageDraw,
-  onLoadCoverageSocioeconomicData,
+  onLoadIbgeSocioeconomicData,
   onLoadIsochrone,
   onLocationSearchSubmit,
   onResetCreateDraft,
@@ -387,7 +385,7 @@ function OperationalSidebarShell({
   const stateOptions = getStateOptions(municipalities);
   const hasActiveFilters = filters.state !== 'ALL' || filters.status !== 'ALL';
   const coverageVerticesCount = getCoverageVerticesCount(coverageArea);
-  const isCoverageDataLoading = coverageSocioeconomicStatus === 'loading';
+  const isIbgeDataLoading = ibgeSocioeconomicStatus === 'loading';
   const currentCoordinates =
     selectedPoint ?? selectedAsset?.geometry.coordinates ?? assets[0]?.geometry.coordinates ?? null;
   const currentModeCopy = modeCopy[mode];
@@ -520,7 +518,7 @@ function OperationalSidebarShell({
                     onOpenCoverage={() => onChangeMode('coverage')}
                     onOpenData={() => {
                       onChangeMode('data');
-                      onLoadCoverageSocioeconomicData();
+                      onLoadIbgeSocioeconomicData();
                     }}
                     onToggleSelectedCoverage={onToggleSelectedCoverage}
                   />
@@ -565,12 +563,12 @@ function OperationalSidebarShell({
 
                 <TabsContent value="data">
                   <DataTab
-                    coverageSocioeconomicData={coverageSocioeconomicData}
-                    coverageSocioeconomicError={coverageSocioeconomicError}
-                    coverageSocioeconomicStatus={coverageSocioeconomicStatus}
-                    isCoverageDataLoading={isCoverageDataLoading}
+                    ibgeSocioeconomicData={ibgeSocioeconomicData}
+                    ibgeSocioeconomicError={ibgeSocioeconomicError}
+                    ibgeSocioeconomicStatus={ibgeSocioeconomicStatus}
+                    isIbgeDataLoading={isIbgeDataLoading}
                     selectedAsset={selectedAsset}
-                    onLoadCoverageSocioeconomicData={onLoadCoverageSocioeconomicData}
+                    onLoadIbgeSocioeconomicData={onLoadIbgeSocioeconomicData}
                   />
                 </TabsContent>
 
@@ -1258,122 +1256,162 @@ function CoverageVisibilityToggle({
 }
 
 function DataTab({
-  coverageSocioeconomicData,
-  coverageSocioeconomicError,
-  coverageSocioeconomicStatus,
-  isCoverageDataLoading,
+  ibgeSocioeconomicData,
+  ibgeSocioeconomicError,
+  ibgeSocioeconomicStatus,
+  isIbgeDataLoading,
   selectedAsset,
-  onLoadCoverageSocioeconomicData,
+  onLoadIbgeSocioeconomicData,
 }: {
-  coverageSocioeconomicData: CoverageSocioeconomicData | null;
-  coverageSocioeconomicError: string | null;
-  coverageSocioeconomicStatus: 'idle' | 'loading' | 'complete' | 'failed';
-  isCoverageDataLoading: boolean;
+  ibgeSocioeconomicData: IbgeSocioeconomicData | null;
+  ibgeSocioeconomicError: string | null;
+  ibgeSocioeconomicStatus: 'idle' | 'loading' | 'complete' | 'failed';
+  isIbgeDataLoading: boolean;
   selectedAsset: MeteorologyAssetPointFeature | null;
-  onLoadCoverageSocioeconomicData: () => void;
+  onLoadIbgeSocioeconomicData: () => void;
 }) {
   if (!selectedAsset) {
-    return <EmptyState text="Selecione um ativo para consultar os dados da cobertura." />;
+    return <EmptyState text="Selecione um ativo para consultar indicadores municipais do IBGE." />;
   }
 
   return (
     <div className="grid gap-5">
       <section className="grid gap-3">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-          <h2 className={cn(sectionTitleClassName, 'pt-1 text-base')}>Cruzamento socioeconômico</h2>
+          <h2 className={cn(sectionTitleClassName, 'pt-1 text-base')}>
+            Indicadores municipais IBGE
+          </h2>
           <Button
             size="sm"
             type="button"
             variant="success"
-            disabled={isCoverageDataLoading}
-            onClick={onLoadCoverageSocioeconomicData}
+            disabled={isIbgeDataLoading}
+            onClick={onLoadIbgeSocioeconomicData}
           >
             <Database size={15} />
-            {isCoverageDataLoading ? 'Consultando' : 'Cruzar'}
+            {isIbgeDataLoading ? 'Consultando' : 'Consultar'}
           </Button>
         </div>
 
-        {isCoverageDataLoading && (
+        {isIbgeDataLoading && (
           <div className="grid gap-2">
             <div className="h-20 animate-pulse rounded-lg bg-slate-100" />
             <div className="h-28 animate-pulse rounded-lg bg-slate-100" />
           </div>
         )}
 
-        {!isCoverageDataLoading && coverageSocioeconomicData && (
+        {!isIbgeDataLoading && ibgeSocioeconomicData && (
           <div className="grid gap-5">
             <div className="grid grid-cols-[repeat(auto-fit,minmax(132px,1fr))] gap-3">
               <MetricTrend
-                label="Áreas Cruzadas"
-                value={integerFormatter.format(coverageSocioeconomicData.externalAreasCount)}
+                label="População"
+                value={formatNullableInteger(ibgeSocioeconomicData.population)}
               />
               <MetricTrend
-                label="População Total"
-                value={integerFormatter.format(coverageSocioeconomicData.totalPopulation)}
+                label="Domicílios"
+                value={formatNullableInteger(ibgeSocioeconomicData.occupiedHouseholds)}
               />
               <MetricTrend
-                label="Renda Média"
-                value={currencyFormatter.format(coverageSocioeconomicData.averageMonthlyIncome)}
+                label="Média/Domicílio"
+                value={formatNullableDecimal(ibgeSocioeconomicData.averageResidentsPerHousehold)}
               />
             </div>
 
             <section className="grid gap-2">
-              <h3 className={sectionTitleClassName}>Áreas socioeconômicas</h3>
-              {coverageSocioeconomicData.areas.length > 0 ? (
+              <h3 className={sectionTitleClassName}>Município consultado</h3>
+              <div className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="grid min-w-0 gap-0.5">
+                    <strong className="min-w-0 truncate text-sm text-slate-900">
+                      {ibgeSocioeconomicData.municipality.name}
+                    </strong>
+                    <span className="text-[11px] font-semibold text-slate-500">
+                      {ibgeSocioeconomicData.municipality.state ?? 'UF não informada'} · IBGE{' '}
+                      {ibgeSocioeconomicData.municipality.ibgeCode ?? 'não identificado'}
+                    </span>
+                  </div>
+                  <Badge className="shrink-0 bg-emerald-100 text-emerald-800">
+                    {ibgeSocioeconomicData.referenceYear}
+                  </Badge>
+                </div>
+                <span className="text-xs font-medium text-slate-600">
+                  Fonte: {ibgeSocioeconomicData.source}
+                </span>
+              </div>
+            </section>
+
+            <section className="grid gap-2">
+              <h3 className={sectionTitleClassName}>Indicadores</h3>
+              {ibgeSocioeconomicData.indicators.length > 0 ? (
                 <div className="grid max-h-[280px] gap-2 overflow-y-auto pr-1">
-                  {coverageSocioeconomicData.areas.map((area) => (
+                  {ibgeSocioeconomicData.indicators.map((indicator) => (
                     <div
                       className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
-                      key={area.id}
+                      key={indicator.key}
                     >
                       <div className="flex min-w-0 items-start justify-between gap-3">
                         <div className="grid min-w-0 gap-0.5">
                           <strong className="min-w-0 truncate text-sm text-slate-900">
-                            {area.name}
+                            {indicator.label}
                           </strong>
                           <span className="text-[11px] font-semibold text-slate-500">
-                            {area.state ?? 'UF não informada'}
+                            {indicator.source}
                           </span>
                         </div>
                         <Badge className="shrink-0 bg-emerald-100 text-emerald-800">
-                          #{area.id}
+                          {indicator.referenceYear}
                         </Badge>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-xs text-slate-700">
                         <span>
-                          Pop.: <strong>{integerFormatter.format(area.population)}</strong>
+                          Valor: <strong>{formatIndicatorValue(indicator.value)}</strong>
                         </span>
                         <span>
-                          Renda:{' '}
-                          <strong>{currencyFormatter.format(area.averageMonthlyIncome)}</strong>
+                          Unidade: <strong>{indicator.unit}</strong>
                         </span>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <Alert>Nenhuma área socioeconômica foi coberta por este polígono.</Alert>
+                <Alert>Nenhum indicador do IBGE foi encontrado para este município.</Alert>
               )}
             </section>
           </div>
         )}
 
-        {!isCoverageDataLoading && !coverageSocioeconomicData && (
+        {!isIbgeDataLoading && !ibgeSocioeconomicData && (
           <Alert
             className={
-              coverageSocioeconomicStatus === 'failed'
+              ibgeSocioeconomicStatus === 'failed'
                 ? 'border-red-200 bg-red-50 text-red-700'
                 : undefined
             }
           >
-            {coverageSocioeconomicStatus === 'failed'
-              ? `Falha ao consultar: ${coverageSocioeconomicError ?? 'erro desconhecido'}`
-              : 'Nenhum cruzamento carregado para esta cobertura.'}
+            {ibgeSocioeconomicStatus === 'failed'
+              ? `Falha ao consultar: ${ibgeSocioeconomicError ?? 'erro desconhecido'}`
+              : 'Nenhum indicador IBGE carregado para este ativo.'}
           </Alert>
         )}
       </section>
     </div>
   );
+}
+
+function formatNullableInteger(value: number | null): string {
+  return value === null ? '-' : integerFormatter.format(value);
+}
+
+function formatNullableDecimal(value: number | null): string {
+  return value === null ? '-' : decimalFormatter.format(value);
+}
+
+function formatIndicatorValue(value: number | null): string {
+  if (value === null) {
+    return '-';
+  }
+
+  return Number.isInteger(value) ? integerFormatter.format(value) : decimalFormatter.format(value);
 }
 
 function ModelTab({

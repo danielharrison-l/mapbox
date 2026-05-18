@@ -8,7 +8,6 @@ import {
   MeteorologyAssetStatus,
 } from '../../infrastructure/persistence/entities/meteorology-asset.entity';
 import { Municipality } from '../../infrastructure/persistence/entities/municipality.entity';
-import { SocioeconomicArea } from '../../infrastructure/persistence/entities/socioeconomic-area.entity';
 
 type PointGeometry = {
   type: 'Point';
@@ -27,29 +26,11 @@ type MunicipalitySeed = {
   coordinates: [number, number];
 };
 
-type SocioeconomicAreaSeed = {
-  name: string;
-  state: BrazilianState;
-  population: number;
-  averageMonthlyIncome: number;
-  coordinates: [number, number];
-};
-
-type SocioeconomicAreaProfile = {
-  name: string;
-  lngOffsetFactor: number;
-  latOffsetFactor: number;
-  populationFactor: number;
-  incomeFactor: number;
-};
-
 type CapitalPlacementProfile = {
   assetLngStep: number;
   assetLatStep: number;
   coverageLngRadius: number;
   coverageLatRadius: number;
-  socioeconomicLngRadius: number;
-  socioeconomicLatRadius: number;
 };
 
 type SpecificCapitalAssetPlacement = {
@@ -63,16 +44,12 @@ const DEFAULT_CAPITAL_PLACEMENT_PROFILE: CapitalPlacementProfile = {
   assetLatStep: 0.017,
   coverageLngRadius: 0.0055,
   coverageLatRadius: 0.004,
-  socioeconomicLngRadius: 0.0028,
-  socioeconomicLatRadius: 0.0022,
 };
 const WATER_SENSITIVE_CAPITAL_PLACEMENT_PROFILE: CapitalPlacementProfile = {
   assetLngStep: 0.0105,
   assetLatStep: 0.0075,
   coverageLngRadius: 0.0028,
   coverageLatRadius: 0.002,
-  socioeconomicLngRadius: 0.0012,
-  socioeconomicLatRadius: 0.001,
 };
 const WATER_SENSITIVE_STATES: BrazilianState[] = [
   'AL',
@@ -117,37 +94,6 @@ const SPECIFIC_CAPITAL_ASSET_PLACEMENTS: Record<string, SpecificCapitalAssetPlac
     },
   ],
 };
-const SOCIOECONOMIC_AREA_PROFILES: SocioeconomicAreaProfile[] = [
-  {
-    name: 'Setor Norte',
-    lngOffsetFactor: 0,
-    latOffsetFactor: 0.75,
-    populationFactor: 1,
-    incomeFactor: 0.92,
-  },
-  {
-    name: 'Centro Expandido',
-    lngOffsetFactor: 0.85,
-    latOffsetFactor: 0.35,
-    populationFactor: 1.28,
-    incomeFactor: 1.18,
-  },
-  {
-    name: 'Zona Industrial',
-    lngOffsetFactor: -0.8,
-    latOffsetFactor: -0.45,
-    populationFactor: 0.74,
-    incomeFactor: 1.04,
-  },
-  {
-    name: 'Vila Olimpica',
-    lngOffsetFactor: 0.35,
-    latOffsetFactor: -0.9,
-    populationFactor: 0.86,
-    incomeFactor: 0.78,
-  },
-];
-
 const MUNICIPALITY_SEED_DATA: MunicipalitySeed[] = [
   { name: 'Rio Branco', state: 'AC', population: 364756, coordinates: [-67.8243, -9.974] },
   { name: 'Maceió', state: 'AL', population: 957916, coordinates: [-35.735, -9.6658] },
@@ -189,8 +135,6 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
     private readonly infrastructurePointRepository: Repository<InfrastructurePoint>,
     @InjectRepository(MeteorologyAsset)
     private readonly meteorologyAssetRepository: Repository<MeteorologyAsset>,
-    @InjectRepository(SocioeconomicArea)
-    private readonly socioeconomicAreaRepository: Repository<SocioeconomicArea>,
   ) {}
 
   public async onApplicationBootstrap(): Promise<void> {
@@ -202,19 +146,18 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
       assertBrazilianState(municipalitySeed.state);
     }
 
+    await this.meteorologyAssetRepository.query('DROP TABLE IF EXISTS socioeconomic_area CASCADE');
     await this.meteorologyAssetRepository.query(`
       TRUNCATE TABLE
         meteorology_asset,
         infrastructure_point,
-        municipality,
-        socioeconomic_area
+        municipality
       RESTART IDENTITY CASCADE
     `);
 
     const municipalities = await this.municipalityRepository.save(
       MUNICIPALITY_SEED_DATA.map((seed) => this.municipalityRepository.create(seed)),
     );
-    const socioeconomicAreaSeeds: SocioeconomicAreaSeed[] = [];
 
     for (let assetNumber = 1; assetNumber <= TARGET_METEOROLOGY_ASSETS_COUNT; assetNumber += 1) {
       const municipalityIndex = (assetNumber - 1) % municipalities.length;
@@ -252,27 +195,9 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
           ) as unknown as string,
         }),
       );
-
-      socioeconomicAreaSeeds.push(
-        ...this.createSocioeconomicAreaSeeds(municipalitySeed, coordinates, assetNumber),
-      );
     }
 
-    await this.socioeconomicAreaRepository.save(
-      socioeconomicAreaSeeds.map((seed) =>
-        this.socioeconomicAreaRepository.create({
-          name: seed.name,
-          state: seed.state,
-          population: seed.population,
-          averageMonthlyIncome: seed.averageMonthlyIncome,
-          geometry: this.createPointGeometry(seed.coordinates) as unknown as string,
-        }),
-      ),
-    );
-
-    this.logger.log(
-      `Geo mock reset completed with ${TARGET_METEOROLOGY_ASSETS_COUNT} assets and ${socioeconomicAreaSeeds.length} socioeconomic areas.`,
-    );
+    this.logger.log(`Geo seed reset completed with ${TARGET_METEOROLOGY_ASSETS_COUNT} assets.`);
   }
 
   private createAssetCoordinates(
@@ -325,36 +250,6 @@ export class SeedMunicipalitiesService implements OnApplicationBootstrap {
       type: 'Polygon',
       coordinates: [coordinates],
     };
-  }
-
-  private createSocioeconomicAreaSeeds(
-    municipalitySeed: MunicipalitySeed,
-    [lng, lat]: [number, number],
-    assetNumber: number,
-  ): SocioeconomicAreaSeed[] {
-    const placementProfile = this.getPlacementProfile(municipalitySeed.state);
-    const populationScale = Math.min(3.25, Math.max(0.7, municipalitySeed.population / 900_000));
-    const basePopulation = 420 + ((assetNumber * 149) % 980);
-    const baseIncome = 1450 + ((assetNumber * 211) % 4200);
-
-    return SOCIOECONOMIC_AREA_PROFILES.map(
-      (profile, index): SocioeconomicAreaSeed => ({
-        name: `${profile.name} ${String(assetNumber).padStart(2, '0')}`,
-        state: municipalitySeed.state,
-        population: Math.round(
-          (basePopulation + index * 175) * populationScale * profile.populationFactor,
-        ),
-        averageMonthlyIncome: Math.round((baseIncome + index * 260) * profile.incomeFactor),
-        coordinates: [
-          this.roundCoordinate(
-            lng + profile.lngOffsetFactor * placementProfile.socioeconomicLngRadius,
-          ),
-          this.roundCoordinate(
-            lat + profile.latOffsetFactor * placementProfile.socioeconomicLatRadius,
-          ),
-        ],
-      }),
-    );
   }
 
   private getPlacementProfile(state: BrazilianState): CapitalPlacementProfile {

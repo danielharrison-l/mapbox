@@ -1,7 +1,7 @@
 import type {
   AssetFilters,
-  CoverageSocioeconomicData,
   CreateMeteorologyAssetRequest,
+  IbgeSocioeconomicData,
   IsochroneFeatureCollection,
   LocationSearchResult,
   MeteorologyAssetsGeoJsonResponse,
@@ -130,12 +130,12 @@ export async function fetchMunicipalities(signal: AbortSignal): Promise<Municipa
   return (await response.json()) as Municipality[];
 }
 
-export async function fetchCoverageSocioeconomicData(
+export async function fetchIbgeSocioeconomicData(
   signal: AbortSignal,
   infrastructurePointId: number,
-): Promise<CoverageSocioeconomicData> {
+): Promise<IbgeSocioeconomicData> {
   const response = await fetch(
-    `${API_BASE_URL}/geo/meteorology-assets/infrastructure-points/${infrastructurePointId}/coverage-socioeconomic-data`,
+    `${API_BASE_URL}/geo/meteorology-assets/infrastructure-points/${infrastructurePointId}/ibge-socioeconomic-data`,
     {
       signal,
     },
@@ -145,7 +145,7 @@ export async function fetchCoverageSocioeconomicData(
     await throwApiError(response);
   }
 
-  return (await response.json()) as CoverageSocioeconomicData;
+  return (await response.json()) as IbgeSocioeconomicData;
 }
 
 export async function reverseGeocodeLocation(

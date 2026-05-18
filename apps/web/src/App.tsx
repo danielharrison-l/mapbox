@@ -9,7 +9,7 @@ import {
   API_BASE_URL,
   ApiError,
   createMeteorologyAsset,
-  fetchCoverageSocioeconomicData,
+  fetchIbgeSocioeconomicData,
   fetchIsochrone,
   fetchMeteorologyAssets,
   fetchMunicipalities,
@@ -34,7 +34,6 @@ import {
   METEOROLOGY_ASSETS_LAYER_ID,
   readAssetFeature,
   upsertAssetLayer,
-  upsertCoverageSocioeconomicLayer,
   upsertIsochroneLayer,
   upsertSelectedAssetLayer,
   upsertSelectedCoverageLayer,
@@ -50,8 +49,8 @@ import {
 import type {
   AssetFilters,
   AssetFormState,
-  CoverageSocioeconomicData,
   CreateMeteorologyAssetRequest,
+  IbgeSocioeconomicData,
   IsochroneFeatureCollection,
   MeteorologyAssetPointFeature,
   MeteorologyAssetsPointCollection,
@@ -204,8 +203,8 @@ function App() {
   const isDrawingCoverageRef = useRef(false);
   const suppressNextDrawDeleteRef = useRef(false);
   const clearDrawnCoverageAreaRef = useRef<() => void>(() => undefined);
-  const coverageSocioeconomicAbortControllerRef = useRef<AbortController | null>(null);
-  const coverageSocioeconomicSelectionRefreshRef = useRef<number | null>(null);
+  const ibgeSocioeconomicAbortControllerRef = useRef<AbortController | null>(null);
+  const ibgeSocioeconomicSelectionRefreshRef = useRef<number | null>(null);
   const isochroneAbortControllerRef = useRef<AbortController | null>(null);
   const locationSearchAbortControllerRef = useRef<AbortController | null>(null);
   const selectedCoverageVisibleRef = useRef(true);
@@ -236,12 +235,13 @@ function App() {
   const [selectedPoint, setSelectedPoint] = useState<[number, number] | null>(null);
   const [drawnCoverageArea, setDrawnCoverageArea] = useState<PolygonGeometry | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<MeteorologyAssetPointFeature | null>(null);
-  const [coverageSocioeconomicData, setCoverageSocioeconomicData] =
-    useState<CoverageSocioeconomicData | null>(null);
-  const [coverageSocioeconomicStatus, setCoverageSocioeconomicStatus] = useState<
+  const [ibgeSocioeconomicData, setIbgeSocioeconomicData] = useState<IbgeSocioeconomicData | null>(
+    null,
+  );
+  const [ibgeSocioeconomicStatus, setIbgeSocioeconomicStatus] = useState<
     'idle' | 'loading' | 'complete' | 'failed'
   >('idle');
-  const [coverageSocioeconomicError, setCoverageSocioeconomicError] = useState<string | null>(null);
+  const [ibgeSocioeconomicError, setIbgeSocioeconomicError] = useState<string | null>(null);
   const [isochroneData, setIsochroneData] = useState<IsochroneFeatureCollection | null>(null);
   const [isochroneStatus, setIsochroneStatus] = useState<
     'idle' | 'loading' | 'complete' | 'failed'
@@ -331,11 +331,11 @@ function App() {
   }, [selectedAsset]);
 
   const clearSelectedAsset = useCallback(() => {
-    coverageSocioeconomicAbortControllerRef.current?.abort();
+    ibgeSocioeconomicAbortControllerRef.current?.abort();
     setSelectedAsset(null);
-    setCoverageSocioeconomicData(null);
-    setCoverageSocioeconomicStatus('idle');
-    setCoverageSocioeconomicError(null);
+    setIbgeSocioeconomicData(null);
+    setIbgeSocioeconomicStatus('idle');
+    setIbgeSocioeconomicError(null);
     setSidebarMode('assets');
 
     if (!mapRef.current || !isMapLoaded) {
@@ -607,27 +607,27 @@ function App() {
 
   useEffect(() => {
     if (selectedAssetInfrastructurePointId === null) {
-      coverageSocioeconomicAbortControllerRef.current?.abort();
+      ibgeSocioeconomicAbortControllerRef.current?.abort();
       isochroneAbortControllerRef.current?.abort();
-      setCoverageSocioeconomicData(null);
-      setCoverageSocioeconomicStatus('idle');
-      setCoverageSocioeconomicError(null);
+      setIbgeSocioeconomicData(null);
+      setIbgeSocioeconomicStatus('idle');
+      setIbgeSocioeconomicError(null);
       setIsochroneData(null);
       setIsochroneStatus('idle');
       setIsochroneError(null);
       return;
     }
 
-    if (coverageSocioeconomicSelectionRefreshRef.current === selectedAssetInfrastructurePointId) {
-      coverageSocioeconomicSelectionRefreshRef.current = null;
+    if (ibgeSocioeconomicSelectionRefreshRef.current === selectedAssetInfrastructurePointId) {
+      ibgeSocioeconomicSelectionRefreshRef.current = null;
       return;
     }
 
-    coverageSocioeconomicAbortControllerRef.current?.abort();
+    ibgeSocioeconomicAbortControllerRef.current?.abort();
     isochroneAbortControllerRef.current?.abort();
-    setCoverageSocioeconomicData(null);
-    setCoverageSocioeconomicStatus('idle');
-    setCoverageSocioeconomicError(null);
+    setIbgeSocioeconomicData(null);
+    setIbgeSocioeconomicStatus('idle');
+    setIbgeSocioeconomicError(null);
     setIsochroneData(null);
     setIsochroneStatus('idle');
     setIsochroneError(null);
@@ -947,16 +947,6 @@ function App() {
       return;
     }
 
-    upsertCoverageSocioeconomicLayer(map, coverageSocioeconomicData);
-  }, [coverageSocioeconomicData, isMapLoaded, isMapStyleLoaded]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-
-    if (!isMapLoaded || !map || !isMapStyleLoaded) {
-      return;
-    }
-
     upsertIsochroneLayer(map, isochroneData);
   }, [isochroneData, isMapLoaded, isMapStyleLoaded]);
 
@@ -1113,19 +1103,19 @@ function App() {
     };
   }, [filters, hasActiveFilters, isMapLoaded, reloadAssets, totalAssetsCount]);
 
-  const loadCoverageSocioeconomicData = useCallback(async () => {
+  const loadIbgeSocioeconomicData = useCallback(async () => {
     if (!selectedAsset) {
       return;
     }
 
-    coverageSocioeconomicAbortControllerRef.current?.abort();
+    ibgeSocioeconomicAbortControllerRef.current?.abort();
     const abortController = new AbortController();
-    coverageSocioeconomicAbortControllerRef.current = abortController;
-    setCoverageSocioeconomicStatus('loading');
-    setCoverageSocioeconomicError(null);
+    ibgeSocioeconomicAbortControllerRef.current = abortController;
+    setIbgeSocioeconomicStatus('loading');
+    setIbgeSocioeconomicError(null);
 
     try {
-      const data = await fetchCoverageSocioeconomicData(
+      const data = await fetchIbgeSocioeconomicData(
         abortController.signal,
         selectedAsset.properties.infrastructurePointId,
       );
@@ -1134,8 +1124,8 @@ function App() {
         return;
       }
 
-      setCoverageSocioeconomicData(data);
-      setCoverageSocioeconomicStatus('complete');
+      setIbgeSocioeconomicData(data);
+      setIbgeSocioeconomicStatus('complete');
     } catch (error: unknown) {
       if (isAbortError(error)) {
         return;
@@ -1152,14 +1142,14 @@ function App() {
           const reloadedAsset = findReloadedAsset(selectedAsset, geoJson.features);
 
           if (!reloadedAsset) {
-            setCoverageSocioeconomicStatus('failed');
-            setCoverageSocioeconomicError(
+            setIbgeSocioeconomicStatus('failed');
+            setIbgeSocioeconomicError(
               'O ativo selecionado não existe mais na base atual. Selecione o ativo novamente.',
             );
             return;
           }
 
-          const retryData = await fetchCoverageSocioeconomicData(
+          const retryData = await fetchIbgeSocioeconomicData(
             abortController.signal,
             reloadedAsset.properties.infrastructurePointId,
           );
@@ -1168,12 +1158,12 @@ function App() {
             return;
           }
 
-          coverageSocioeconomicSelectionRefreshRef.current =
+          ibgeSocioeconomicSelectionRefreshRef.current =
             reloadedAsset.properties.infrastructurePointId;
           setSelectedAsset(reloadedAsset);
-          setCoverageSocioeconomicData(retryData);
-          setCoverageSocioeconomicStatus('complete');
-          setCoverageSocioeconomicError(null);
+          setIbgeSocioeconomicData(retryData);
+          setIbgeSocioeconomicStatus('complete');
+          setIbgeSocioeconomicError(null);
 
           if (mapRef.current) {
             upsertSelectedCoverageLayer(
@@ -1190,20 +1180,20 @@ function App() {
           }
 
           const retryErrorMessage = getApiErrorMessage(retryError);
-          console.error('Failed to reload coverage socioeconomic data', retryError);
-          setCoverageSocioeconomicStatus('failed');
-          setCoverageSocioeconomicError(retryErrorMessage);
+          console.error('Failed to reload IBGE socioeconomic data', retryError);
+          setIbgeSocioeconomicStatus('failed');
+          setIbgeSocioeconomicError(retryErrorMessage);
           return;
         }
       }
 
       const errorMessage = getApiErrorMessage(error);
-      console.error('Failed to load coverage socioeconomic data', error);
-      setCoverageSocioeconomicStatus('failed');
-      setCoverageSocioeconomicError(errorMessage);
+      console.error('Failed to load IBGE socioeconomic data', error);
+      setIbgeSocioeconomicStatus('failed');
+      setIbgeSocioeconomicError(errorMessage);
     } finally {
-      if (coverageSocioeconomicAbortControllerRef.current === abortController) {
-        coverageSocioeconomicAbortControllerRef.current = null;
+      if (ibgeSocioeconomicAbortControllerRef.current === abortController) {
+        ibgeSocioeconomicAbortControllerRef.current = null;
       }
     }
   }, [filters, reloadAssets, selectedAsset]);
@@ -1481,9 +1471,9 @@ function App() {
         <OperationalSidebar
           assets={assetsGeoJson.features}
           coverageArea={drawnCoverageArea}
-          coverageSocioeconomicData={coverageSocioeconomicData}
-          coverageSocioeconomicError={coverageSocioeconomicError}
-          coverageSocioeconomicStatus={coverageSocioeconomicStatus}
+          ibgeSocioeconomicData={ibgeSocioeconomicData}
+          ibgeSocioeconomicError={ibgeSocioeconomicError}
+          ibgeSocioeconomicStatus={ibgeSocioeconomicStatus}
           filters={filters}
           form={form}
           formStatus={formStatus}
@@ -1512,7 +1502,7 @@ function App() {
           onClearFilters={() => setFilters(initialAssetFilters)}
           onFocusCoverage={focusSelectedAssetCoverage}
           onFinishCoverageDraw={finishCoverageDraw}
-          onLoadCoverageSocioeconomicData={loadCoverageSocioeconomicData}
+          onLoadIbgeSocioeconomicData={loadIbgeSocioeconomicData}
           onLoadIsochrone={loadSelectedAssetIsochrone}
           onLocationSearchSubmit={handleLocationSearch}
           onResetCreateDraft={resetCreateDraft}

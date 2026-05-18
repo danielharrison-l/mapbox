@@ -5,6 +5,7 @@ import { GEO_USE_CASE_PROVIDERS } from './application/usecases/providers/usecase
 import { InfrastructurePointController } from './http/controllers/infrastructure-point.controller';
 import { MeteorologyAssetController } from './http/controllers/meteorology-asset.controller';
 import { MunicipalityController } from './http/controllers/municipality.controller';
+import { IbgeApiClient } from './infrastructure/http/ibge-api.client';
 import { GEO_ENTITIES } from './infrastructure/persistence/entities/token/entities.token';
 import {
   GEO_REPOSITORY_PROVIDERS,
@@ -16,6 +17,7 @@ import {
   controllers: [InfrastructurePointController, MeteorologyAssetController, MunicipalityController],
   providers: [
     ...GEO_USE_CASE_PROVIDERS,
+    IbgeApiClient,
     SeedMunicipalitiesService,
     ...GEO_REPOSITORY_PROVIDERS,
   ],

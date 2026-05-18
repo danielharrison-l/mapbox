@@ -22,7 +22,7 @@ import {
 import type { FindMeteorologyAssetsInput } from '../../application/dto/find-meteorology-assets.input';
 import { CreateMeteorologyAssetUseCase } from '../../application/usecases/create-meteorology-asset.use-case';
 import { FindAllMeteorologyAssetsUseCase } from '../../application/usecases/find-all-meteorology-assets.use-case';
-import { FindCoverageSocioeconomicDataUseCase } from '../../application/usecases/find-coverage-socioeconomic-data.use-case';
+import { FindIbgeSocioeconomicDataUseCase } from '../../application/usecases/find-ibge-socioeconomic-data.use-case';
 import { FindMeteorologyAssetByInfrastructurePointIdUseCase } from '../../application/usecases/find-meteorology-asset-by-infrastructure-point-id.use-case';
 import { UpdateMeteorologyAssetCoverageUseCase } from '../../application/usecases/update-meteorology-asset-coverage.use-case';
 import { isBrazilianState } from '../../domain/brazilian-state';
@@ -33,7 +33,7 @@ import {
 } from '../../infrastructure/persistence/entities/meteorology-asset.entity';
 import type { CreateMeteorologyAssetRequest } from '../requests/create-meteorology-asset.request';
 import type { UpdateMeteorologyAssetCoverageRequest } from '../requests/update-meteorology-asset-coverage.request';
-import { CoverageSocioeconomicDataResponse } from '../responses/coverage-socioeconomic-data.response';
+import { IbgeSocioeconomicDataResponse } from '../responses/ibge-socioeconomic-data.response';
 import { MeteorologyAssetGeoJsonResponse } from '../responses/meteorology-asset-geojson.response';
 
 @ApiTags('geo')
@@ -43,7 +43,7 @@ export class MeteorologyAssetController {
     private readonly createMeteorologyAssetUseCase: CreateMeteorologyAssetUseCase,
     private readonly findAllMeteorologyAssetsUseCase: FindAllMeteorologyAssetsUseCase,
     private readonly findMeteorologyAssetByInfrastructurePointIdUseCase: FindMeteorologyAssetByInfrastructurePointIdUseCase,
-    private readonly findCoverageSocioeconomicDataUseCase: FindCoverageSocioeconomicDataUseCase,
+    private readonly findIbgeSocioeconomicDataUseCase: FindIbgeSocioeconomicDataUseCase,
     private readonly updateMeteorologyAssetCoverageUseCase: UpdateMeteorologyAssetCoverageUseCase,
   ) {}
 
@@ -125,9 +125,9 @@ export class MeteorologyAssetController {
     return MeteorologyAssetMapper.toGeoJsonResponse([meteorologyAsset]);
   }
 
-  @Get('infrastructure-points/:infrastructurePointId/coverage-socioeconomic-data')
+  @Get('infrastructure-points/:infrastructurePointId/ibge-socioeconomic-data')
   @ApiOperation({
-    summary: 'Cruza dados socioeconômicos externos com a área de cobertura do ativo',
+    summary: 'Busca indicadores socioeconômicos municipais pela API do IBGE',
   })
   @ApiParam({
     name: 'infrastructurePointId',
@@ -135,25 +135,25 @@ export class MeteorologyAssetController {
     type: Number,
   })
   @ApiOkResponse({
-    description: 'Dados socioeconômicos cruzados com a cobertura com sucesso',
-    type: CoverageSocioeconomicDataResponse,
+    description: 'Indicadores municipais do IBGE consultados com sucesso',
+    type: IbgeSocioeconomicDataResponse,
   })
   @ApiNotFoundResponse({
     description: 'Ativo de meteorologia não encontrado para o ponto de infraestrutura',
   })
-  public async findCoverageSocioeconomicData(
+  public async findIbgeSocioeconomicData(
     @Param('infrastructurePointId', ParseIntPipe) infrastructurePointId: number,
-  ): Promise<CoverageSocioeconomicDataResponse> {
-    const coverageSocioeconomicData =
-      await this.findCoverageSocioeconomicDataUseCase.execute(infrastructurePointId);
+  ): Promise<IbgeSocioeconomicDataResponse> {
+    const ibgeSocioeconomicData =
+      await this.findIbgeSocioeconomicDataUseCase.execute(infrastructurePointId);
 
-    if (!coverageSocioeconomicData) {
+    if (!ibgeSocioeconomicData) {
       throw new NotFoundException(
         'Ativo de meteorologia não encontrado para o ponto de infraestrutura informado',
       );
     }
 
-    return coverageSocioeconomicData;
+    return ibgeSocioeconomicData;
   }
 
   @Get('infrastructure-points/:infrastructurePointId')
@@ -239,7 +239,7 @@ export class MeteorologyAssetController {
       const normalizedState = stateFilter.toUpperCase();
 
       if (!isBrazilianState(normalizedState)) {
-      throw new BadRequestException('Filtro de estado brasileiro inválido.');
+        throw new BadRequestException('Filtro de estado brasileiro inválido.');
       }
 
       filters.state = normalizedState;
@@ -247,7 +247,7 @@ export class MeteorologyAssetController {
 
     if (statusFilter) {
       if (!Object.values(MeteorologyAssetStatus).includes(statusFilter as MeteorologyAssetStatus)) {
-      throw new BadRequestException('Filtro de status do ativo de meteorologia inválido.');
+        throw new BadRequestException('Filtro de status do ativo de meteorologia inválido.');
       }
 
       filters.status = statusFilter as MeteorologyAssetStatus;

@@ -99,21 +99,31 @@ export type CreateMeteorologyAssetRequest = {
   status: MeteorologyAssetStatus;
 };
 
-export type CoverageSocioeconomicArea = {
-  id: number;
-  name: string;
-  state: string | null;
-  population: number;
-  averageMonthlyIncome: number;
-  geometry: PointGeometry | null;
+export type IbgeSocioeconomicIndicator = {
+  key: string;
+  label: string;
+  value: number | null;
+  unit: string;
+  source: string;
+  referenceYear: number;
 };
 
-export type CoverageSocioeconomicData = {
+export type IbgeSocioeconomicData = {
   infrastructurePointId: number;
-  externalAreasCount: number;
-  totalPopulation: number;
-  averageMonthlyIncome: number;
-  areas: CoverageSocioeconomicArea[];
+  municipality: {
+    id: number;
+    name: string;
+    state: string | null;
+    ibgeCode: string | null;
+  };
+  source: string;
+  referenceYear: number;
+  population: number | null;
+  occupiedHouseholds: number | null;
+  residentsInHouseholds: number | null;
+  averageResidentsPerHousehold: number | null;
+  indicators: IbgeSocioeconomicIndicator[];
+  warnings: string[];
 };
 
 export type ReverseGeocodedLocation = {

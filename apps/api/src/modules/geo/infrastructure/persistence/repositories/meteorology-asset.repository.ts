@@ -1,4 +1,3 @@
-import type { CoverageSocioeconomicDataOutput } from '../../../application/dto/coverage-socioeconomic-data.output';
 import type { FindMeteorologyAssetsInput } from '../../../application/dto/find-meteorology-assets.input';
 import type { MeteorologyAsset } from '../entities/meteorology-asset.entity';
 
@@ -10,7 +9,4 @@ export interface MeteorologyAssetRepository {
     infrastructurePointId: number,
     coverageArea: string,
   ): Promise<MeteorologyAsset | null>;
-  findCoverageSocioeconomicDataByInfrastructurePointId(
-    infrastructurePointId: number,
-  ): Promise<CoverageSocioeconomicDataOutput | null>;
 }
