@@ -108,6 +108,12 @@ export type IbgeSocioeconomicIndicator = {
   referenceYear: number;
 };
 
+export type IbgeSocioeconomicIndicatorGroup = {
+  key: string;
+  label: string;
+  indicators: IbgeSocioeconomicIndicator[];
+};
+
 export type IbgeSocioeconomicData = {
   infrastructurePointId: number;
   municipality: {
@@ -123,6 +129,7 @@ export type IbgeSocioeconomicData = {
   residentsInHouseholds: number | null;
   averageResidentsPerHousehold: number | null;
   indicators: IbgeSocioeconomicIndicator[];
+  indicatorGroups: IbgeSocioeconomicIndicatorGroup[];
   warnings: string[];
 };
 

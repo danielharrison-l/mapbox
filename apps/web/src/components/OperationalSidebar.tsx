@@ -1342,35 +1342,49 @@ function DataTab({
 
             <section className="grid gap-2">
               <h3 className={sectionTitleClassName}>Indicadores</h3>
-              {ibgeSocioeconomicData.indicators.length > 0 ? (
-                <div className="grid max-h-[280px] gap-2 overflow-y-auto pr-1">
-                  {ibgeSocioeconomicData.indicators.map((indicator) => (
-                    <div
-                      className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
-                      key={indicator.key}
+              {ibgeSocioeconomicData.indicatorGroups.length > 0 ? (
+                <div className="grid max-h-[420px] gap-2 overflow-y-auto pr-1">
+                  {ibgeSocioeconomicData.indicatorGroups.map((group, groupIndex) => (
+                    <details
+                      className="group rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+                      key={group.key}
+                      open={groupIndex < 3}
                     >
-                      <div className="flex min-w-0 items-start justify-between gap-3">
-                        <div className="grid min-w-0 gap-0.5">
-                          <strong className="min-w-0 truncate text-sm text-slate-900">
-                            {indicator.label}
-                          </strong>
-                          <span className="text-[11px] font-semibold text-slate-500">
-                            {indicator.source}
-                          </span>
-                        </div>
-                        <Badge className="shrink-0 bg-emerald-100 text-emerald-800">
-                          {indicator.referenceYear}
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-bold text-slate-900">
+                        <span className="min-w-0 truncate">{group.label}</span>
+                        <Badge className="shrink-0 bg-slate-100 text-slate-700">
+                          {group.indicators.length}
                         </Badge>
+                      </summary>
+                      <div className="mt-3 grid gap-2">
+                        {group.indicators.map((indicator) => (
+                          <div
+                            className="grid gap-2 rounded-md border border-slate-100 bg-slate-50 p-2"
+                            key={indicator.key}
+                          >
+                            <div className="grid min-w-0 gap-1">
+                              <span className="min-w-0 text-xs font-semibold text-slate-800">
+                                {indicator.label}
+                              </span>
+                              <div className="rounded-md bg-white px-2 py-1.5 shadow-sm ring-1 ring-slate-200">
+                                <span className="block text-[10px] font-bold uppercase text-slate-500">
+                                  Valor
+                                </span>
+                                <strong className="block text-base font-black text-slate-950">
+                                  {formatIndicatorValueWithUnit(indicator.value, indicator.unit)}
+                                </strong>
+                              </div>
+                              <span className="sr-only">
+                                {formatIndicatorValueWithUnit(indicator.value, indicator.unit)}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-semibold text-slate-500">
+                              {indicator.source}
+                            </span>
+                          </div>
+                        ))}
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs text-slate-700">
-                        <span>
-                          Valor: <strong>{formatIndicatorValue(indicator.value)}</strong>
-                        </span>
-                        <span>
-                          Unidade: <strong>{indicator.unit}</strong>
-                        </span>
-                      </div>
-                    </div>
+                    </details>
                   ))}
                 </div>
               ) : (
@@ -1412,6 +1426,16 @@ function formatIndicatorValue(value: number | null): string {
   }
 
   return Number.isInteger(value) ? integerFormatter.format(value) : decimalFormatter.format(value);
+}
+
+function formatIndicatorValueWithUnit(value: number | null, unit: string): string {
+  const formattedValue = formatIndicatorValue(value);
+
+  if (formattedValue === '-' || unit === '%') {
+    return unit === '%' && formattedValue !== '-' ? `${formattedValue}%` : formattedValue;
+  }
+
+  return `${formattedValue} ${unit}`;
 }
 
 function ModelTab({

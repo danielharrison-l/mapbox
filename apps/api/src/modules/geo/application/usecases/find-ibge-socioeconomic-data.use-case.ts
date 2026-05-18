@@ -45,6 +45,7 @@ export class FindIbgeSocioeconomicDataUseCase {
         residentsInHouseholds: null,
         averageResidentsPerHousehold: null,
         indicators: [],
+        indicatorGroups: [],
         warnings: [
           ...warnings,
           'Município não encontrado na API de Localidades do IBGE para o nome/UF do ativo.',
@@ -67,40 +68,7 @@ export class FindIbgeSocioeconomicDataUseCase {
       source: 'IBGE API Localidades/SIDRA',
       referenceYear: 2022,
       ...indicators,
-      indicators: [
-        {
-          key: 'population',
-          label: 'População residente',
-          value: indicators.population,
-          unit: 'Pessoas',
-          source: 'IBGE SIDRA tabela 4709, variável 93',
-          referenceYear: 2022,
-        },
-        {
-          key: 'occupiedHouseholds',
-          label: 'Domicílios particulares permanentes ocupados',
-          value: indicators.occupiedHouseholds,
-          unit: 'Domicílios',
-          source: 'IBGE SIDRA tabela 9922, variável 381',
-          referenceYear: 2022,
-        },
-        {
-          key: 'residentsInHouseholds',
-          label: 'Moradores em domicílios particulares permanentes ocupados',
-          value: indicators.residentsInHouseholds,
-          unit: 'Pessoas',
-          source: 'IBGE SIDRA tabela 9922, variável 382',
-          referenceYear: 2022,
-        },
-        {
-          key: 'averageResidentsPerHousehold',
-          label: 'Média de moradores por domicílio ocupado',
-          value: indicators.averageResidentsPerHousehold,
-          unit: 'Pessoas',
-          source: 'IBGE SIDRA tabela 9922, variável 5930',
-          referenceYear: 2022,
-        },
-      ],
+      indicators: indicators.indicatorGroups.flatMap((group) => group.indicators),
       warnings,
     };
   }

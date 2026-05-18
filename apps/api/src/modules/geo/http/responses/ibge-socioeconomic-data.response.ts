@@ -35,6 +35,17 @@ export class IbgeSocioeconomicIndicatorResponse {
   public referenceYear!: number;
 }
 
+export class IbgeSocioeconomicIndicatorGroupResponse {
+  @ApiProperty({ example: 'householdIncome' })
+  public key!: string;
+
+  @ApiProperty({ example: 'Renda domiciliar per capita' })
+  public label!: string;
+
+  @ApiProperty({ type: IbgeSocioeconomicIndicatorResponse, isArray: true })
+  public indicators!: IbgeSocioeconomicIndicatorResponse[];
+}
+
 export class IbgeSocioeconomicDataResponse {
   @ApiProperty({ example: 1 })
   public infrastructurePointId!: number;
@@ -62,6 +73,9 @@ export class IbgeSocioeconomicDataResponse {
 
   @ApiProperty({ type: IbgeSocioeconomicIndicatorResponse, isArray: true })
   public indicators!: IbgeSocioeconomicIndicatorResponse[];
+
+  @ApiProperty({ type: IbgeSocioeconomicIndicatorGroupResponse, isArray: true })
+  public indicatorGroups!: IbgeSocioeconomicIndicatorGroupResponse[];
 
   @ApiProperty({
     example: ['Dados obtidos via API do IBGE em nível municipal.'],
